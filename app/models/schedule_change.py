@@ -30,7 +30,7 @@ class ScheduleChange(Base):
     old_destination: Mapped[str] = mapped_column(String(3), nullable=False)
     new_destination: Mapped[str] = mapped_column(String(3), nullable=False)
     
-    rebooking_rule: Mapped[RebookingRule] = mapped_column(Enum(RebookingRule), default=RebookingRule.NONE)
+    rebooking_rule: Mapped[RebookingRule] = mapped_column(Enum(RebookingRule, name='rebooking_rule'), default=RebookingRule.NONE)
     fare_policy_override: Mapped[bool] = mapped_column(Boolean, default=False)
     override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     affected_bookings_count: Mapped[int] = mapped_column(Integer, default=0)

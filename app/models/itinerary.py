@@ -19,7 +19,7 @@ class Itinerary(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    status: Mapped[ItineraryStatus] = mapped_column(Enum(ItineraryStatus), default=ItineraryStatus.PENDING)
+    status: Mapped[ItineraryStatus] = mapped_column(Enum(ItineraryStatus, name='itinerary_status'), default=ItineraryStatus.PENDING)
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     locale: Mapped[str] = mapped_column(String(10), default="en-US")
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -35,8 +35,8 @@ class ItineraryLeg(Base):
     itinerary_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("itineraries.id"), nullable=False)
     flight_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("flights.id"), nullable=False)
     leg_order: Mapped[int] = mapped_column(Integer, nullable=False)
-    seat_class: Mapped[SeatClass] = mapped_column(Enum(SeatClass), nullable=False)
-    fare_type: Mapped[FareType] = mapped_column(Enum(FareType), nullable=False)
+    seat_class: Mapped[SeatClass] = mapped_column(Enum(SeatClass, name='seat_class'), nullable=False)
+    fare_type: Mapped[FareType] = mapped_column(Enum(FareType, name='fare_type'), nullable=False)
     passenger_count: Mapped[int] = mapped_column(Integer, nullable=False)
 
     itinerary: Mapped["Itinerary"] = relationship("Itinerary", back_populates="legs")

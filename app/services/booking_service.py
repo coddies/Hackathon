@@ -296,7 +296,14 @@ async def confirm_booking(
             passenger_names=passenger_names
         )
     
-    return booking
+    booking_result = await db.execute(
+        select(Booking)
+        .options(selectinload(Booking.passengers))
+        .where(Booking.id == booking.id)
+    )
+    final_booking = booking_result.scalar_one()
+    
+    return final_booking
 
 async def cancel_booking(
     db: AsyncSession,

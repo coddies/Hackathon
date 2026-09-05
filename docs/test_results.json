@@ -1,0 +1,249 @@
+{
+  "results": [
+    {
+      "feature": "Health Check",
+      "endpoint": "GET /health",
+      "input": "None",
+      "expected": "200 OK with database: connected",
+      "actual": "{\"status\":\"ok\",\"service\":\"flight-management-api\",\"database\":\"connected\"}",
+      "status_code": 200,
+      "passed": true,
+      "db_records": "Live connection check",
+      "error": "-"
+    },
+    {
+      "feature": "Authentication",
+      "endpoint": "POST /auth/login",
+      "input": "Valid credentials for QA_TEST_superadmin@airline.com",
+      "expected": "200 OK with access_token",
+      "actual": "Login successful",
+      "status_code": 200,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Authentication",
+      "endpoint": "POST /auth/login",
+      "input": "Invalid password",
+      "expected": "401 Unauthorized / rejected",
+      "actual": "{\"detail\":\"Invalid email or password\"}",
+      "status_code": 401,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "User Registration",
+      "endpoint": "POST /auth/register",
+      "input": "Register QA_TEST_new_passenger@example.com",
+      "expected": "201 Created",
+      "actual": "{\"id\":\"0fbe12f8-432e-4daa-a01c-5fc710642323\",\"email\":\"QA_TEST_new_passenger@example.com\",\"role\":\"PASSENGER\",\"full_name\":\"New QA Passenger\",\"is_active\":true,\"created_at\":\"2026-09-05T21:55:48.165707Z\"}",
+      "status_code": 201,
+      "passed": true,
+      "db_records": "users (1 new user)",
+      "error": "-"
+    },
+    {
+      "feature": "Role Permission",
+      "endpoint": "POST /admin/flights",
+      "input": "Passenger token creating flight",
+      "expected": "403 Forbidden",
+      "actual": "{\"detail\":\"Access denied. Required roles: ['SUPER_ADMIN', 'OPS_AGENT']\"}",
+      "status_code": 403,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Flight Creation",
+      "endpoint": "POST /admin/flights",
+      "input": "Flight QA-100 LHE->DXB capacity 7",
+      "expected": "201 Created",
+      "actual": "Flight created with ID: 3f85edf4-9c4e-4b32-97bf-77ec20ae8ce4",
+      "status_code": 201,
+      "passed": true,
+      "db_records": "flights, seat_inventory, audit_logs",
+      "error": "-"
+    },
+    {
+      "feature": "Validation",
+      "endpoint": "POST /admin/flights",
+      "input": "Origin == Destination (LHE -> LHE)",
+      "expected": "400 Bad Request / 422 Validation Error",
+      "actual": "{\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\"],\"msg\":\"Value error, origin must differ from destination\",\"input\":{\"flight_number\":\"QA-101\",\"origin\":\"LHE\",\"destination\":\"LHE\",\"departure_at\":\"2026-09-10T21:56:51.841922+00:00\",\"arrival_at\":\"2026-09-11T01:56:51.841922+00:00\",\"aircraft_capacity\":7,\"seat_classes\":[{\"seat_class\":\"FIRST\",\"total_seats\":2,\"fare_basic\":1000.0,\"fare_flexible\":1400.0},{\"seat_class\":\"BUSINESS\",\"total_seats\":3,\"fare_basic\":500.0,\"fare_flexible\":700.0},{\"seat_class\":\"ECONOMY\",\"total_seats\":2,\"fare_basic\":200.0,\"fare_flexible\":300.0}]},\"ctx\":{\"error\":{}}}],\"body\":{\"flight_number\":\"QA-101\",\"origin\":\"LHE\",\"destination\":\"LHE\",\"departure_at\":\"2026-09-10T21:56:51.841922+00:00\",\"arrival_at\":\"2026-09-11T01:56:51.841922+00:00\",\"aircraft_capacity\":7,\"seat_classes\":[{\"seat_class\":\"FIRST\",\"total_seats\":2,\"fare_basic\":1000.0,\"fare_flexible\":1400.0},{\"seat_class\":\"BUSINESS\",\"total_seats\":3,\"fare_basic\":500.0,\"fare_flexible\":700.0},{\"seat_class\":\"ECONOMY\",\"total_seats\":2,\"fare_basic\":200.0,\"fare_flexible\":300.0}]}}",
+      "status_code": 422,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Validation",
+      "endpoint": "POST /admin/flights",
+      "input": "Arrival earlier than departure",
+      "expected": "400 Bad Request / 422 Validation Error",
+      "actual": "{\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\"],\"msg\":\"Value error, departure_at must be before arrival_at\",\"input\":{\"flight_number\":\"QA-102\",\"origin\":\"LHE\",\"destination\":\"DXB\",\"departure_at\":\"2026-09-10T21:56:51.841922+00:00\",\"arrival_at\":\"2026-09-09T21:56:55.970525+00:00\",\"aircraft_capacity\":7,\"seat_classes\":[{\"seat_class\":\"FIRST\",\"total_seats\":2,\"fare_basic\":1000.0,\"fare_flexible\":1400.0},{\"seat_class\":\"BUSINESS\",\"total_seats\":3,\"fare_basic\":500.0,\"fare_flexible\":700.0},{\"seat_class\":\"ECONOMY\",\"total_seats\":2,\"fare_basic\":200.0,\"fare_flexible\":300.0}]},\"ctx\":{\"error\":{}}}],\"body\":{\"flight_number\":\"QA-102\",\"origin\":\"LHE\",\"destination\":\"DXB\",\"departure_at\":\"2026-09-10T21:56:51.841922+00:00\",\"arrival_at\":\"2026-09-09T21:56:55.970525+00:00\",\"aircraft_capacity\":7,\"seat_classes\":[{\"seat_class\":\"FIRST\",\"total_seats\":2,\"fare_basic\":1000.0,\"fare_flexible\":1400.0},{\"seat_class\":\"BUSINESS\",\"total_seats\":3,\"fare_basic\":500.0,\"fare_flexible\":700.0},{\"seat_class\":\"ECONOMY\",\"total_seats\":2,\"fare_basic\":200.0,\"fare_flexible\":300.0}]}}",
+      "status_code": 422,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Validation",
+      "endpoint": "POST /admin/flights",
+      "input": "Seat total (7) != capacity (20)",
+      "expected": "400 Bad Request / 422 Validation Error",
+      "actual": "{\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\"],\"msg\":\"Value error, sum of seat class total_seats must equal aircraft_capacity\",\"input\":{\"flight_number\":\"QA-103\",\"origin\":\"LHE\",\"destination\":\"DXB\",\"departure_at\":\"2026-09-10T21:56:51.841922+00:00\",\"arrival_at\":\"2026-09-11T01:56:51.841922+00:00\",\"aircraft_capacity\":20,\"seat_classes\":[{\"seat_class\":\"FIRST\",\"total_seats\":2,\"fare_basic\":1000.0,\"fare_flexible\":1400.0},{\"seat_class\":\"BUSINESS\",\"total_seats\":3,\"fare_basic\":500.0,\"fare_flexible\":700.0},{\"seat_class\":\"ECONOMY\",\"total_seats\":2,\"fare_basic\":200.0,\"fare_flexible\":300.0}]},\"ctx\":{\"error\":{}}}],\"body\":{\"flight_number\":\"QA-103\",\"origin\":\"LHE\",\"destination\":\"DXB\",\"departure_at\":\"2026-09-10T21:56:51.841922+00:00\",\"arrival_at\":\"2026-09-11T01:56:51.841922+00:00\",\"aircraft_capacity\":20,\"seat_classes\":[{\"seat_class\":\"FIRST\",\"total_seats\":2,\"fare_basic\":1000.0,\"fare_flexible\":1400.0},{\"seat_class\":\"BUSINESS\",\"total_seats\":3,\"fare_basic\":500.0,\"fare_flexible\":700.0},{\"seat_class\":\"ECONOMY\",\"total_seats\":2,\"fare_basic\":200.0,\"fare_flexible\":300.0}]}}",
+      "status_code": 422,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Validation",
+      "endpoint": "POST /admin/flights",
+      "input": "Duplicate flight QA-100 same day",
+      "expected": "409 Conflict / 400 Bad Request",
+      "actual": "{\"detail\":\"Flight QA-100 already exists for route LHE-DXB on 2026-09-10\"}",
+      "status_code": 409,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Flight Search",
+      "endpoint": "GET /flights/search",
+      "input": "origin=LHE, dest=DXB, date=2026-09-10",
+      "expected": "200 OK with available classes and fare types",
+      "actual": "[{\"id\":\"3f85edf4-9c4e-4b32-97bf-77ec20ae8ce4\",\"flight_number\":\"QA-100\",\"origin\":\"LHE\",\"destination\":\"DXB\",\"departure_at\":\"2026-09-10T21:56:51.841922Z\",\"arrival_at\":\"2026-09-11T01:56:51.841922Z\",\"statu",
+      "status_code": 200,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Seat Map",
+      "endpoint": "GET /flights/3f85edf4-9c4e-4b32-97bf-77ec20ae8ce4/seat-map",
+      "input": "flight_id=3f85edf4-9c4e-4b32-97bf-77ec20ae8ce4",
+      "expected": "200 OK with seat classes and availability",
+      "actual": "{\"flight_id\":\"3f85edf4-9c4e-4b32-97bf-77ec20ae8ce4\",\"flight_number\":\"QA-100\",\"seat_classes\":{\"FIRST\":[{\"id\":\"8a9a1e5b-7755-4c71-9e0c-eae2097ccc8b\",\"seat_number\":\"1A\",\"seat_class\":\"FIRST\",\"is_available",
+      "status_code": 200,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Seat Hold",
+      "endpoint": "POST /bookings/hold",
+      "input": "Flight 3f85edf4-9c4e-4b32-97bf-77ec20ae8ce4, ECONOMY, 1 pax",
+      "expected": "201 Created with hold_id and expiry",
+      "actual": "hold_id=6a27762b-6641-4947-bf01-745d7a365a74, expires_at=2026-09-05T22:12:05.073889Z",
+      "status_code": 201,
+      "passed": true,
+      "db_records": "seat_holds, seat_inventory (held_seats incremented)",
+      "error": "-"
+    },
+    {
+      "feature": "Confirm Booking",
+      "endpoint": "POST /bookings",
+      "input": "Confirm hold 6a27762b-6641-4947-bf01-745d7a365a74 for 20A",
+      "expected": "201 Created with booking_reference",
+      "actual": "booking_reference=BK2FLPSPGH",
+      "status_code": 201,
+      "passed": true,
+      "db_records": "bookings, passengers, seat_inventory, audit_logs",
+      "error": "-"
+    },
+    {
+      "feature": "Idempotency",
+      "endpoint": "POST /bookings",
+      "input": "Duplicate key 944180a0-3e78-480d-a300-3dd6ad97467d with same payload",
+      "expected": "Returns identical cached response",
+      "actual": "{\"id\":\"5874dca4-92cd-4985-8be1-a6eddbc80b9c\",\"booking_reference\":\"BK2FLPSPGH\",\"flight_id\":\"3f85edf4-9c4e-4b32-97bf-77ec20ae8ce4\",\"seat_class\":\"ECONOMY",
+      "status_code": 201,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Idempotency Conflict",
+      "endpoint": "POST /bookings",
+      "input": "Same key 944180a0-3e78-480d-a300-3dd6ad97467d with changed payload",
+      "expected": "409 Conflict",
+      "actual": "{\"detail\":\"Idempotency key '944180a0-3e78-480d-a300-3dd6ad97467d' was used with a different request body\"}",
+      "status_code": 409,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Release Hold",
+      "endpoint": "POST /bookings/hold/862cafe4-401c-4300-8869-bb911870222f/release",
+      "input": "Release active hold 862cafe4-401c-4300-8869-bb911870222f",
+      "expected": "200 OK / 204 No Content, inventory restored",
+      "actual": "{\"message\":\"Hold released successfully\"}",
+      "status_code": 200,
+      "passed": true,
+      "db_records": "seat_holds (RELEASED), seat_inventory (available_seats restored)",
+      "error": "-"
+    },
+    {
+      "feature": "Cancel Booking",
+      "endpoint": "POST /bookings/BK2FLPSPGH/cancel",
+      "input": "Cancel booking BK2FLPSPGH",
+      "expected": "200 OK with cancellation outcome",
+      "actual": "{\"booking_reference\":\"BK2FLPSPGH\",\"cancelled_passengers\":[\"0c21a0bb-9757-4cf8-847e-e63cacc77ea5\"],\"refund_type\":\"CASH\",\"refund_amount\":\"300.00\",\"credit_expires_at\":null,\"message\":\"Cancellation process",
+      "status_code": 200,
+      "passed": true,
+      "db_records": "bookings (CANCELLED), refunds, audit_logs",
+      "error": "-"
+    },
+    {
+      "feature": "Query Refunds",
+      "endpoint": "GET /refunds/BK2FLPSPGH",
+      "input": "Query refunds for BK2FLPSPGH",
+      "expected": "200 OK with refunds and credits list",
+      "actual": "{\"booking_reference\":\"BK2FLPSPGH\",\"refunds\":[{\"passenger_id\":null,\"booking_id\":\"5874dca4-92cd-4985-8be1-a6eddbc80b9c\",\"refund_type\":\"CASH\",\"currency\":\"USD\",\"reason\":\"Customer requested cancellation\",\"",
+      "status_code": 200,
+      "passed": true,
+      "db_records": "-",
+      "error": "-"
+    },
+    {
+      "feature": "Waitlist Entry",
+      "endpoint": "POST /waitlist",
+      "input": "Join waitlist for 3f85edf4-9c4e-4b32-97bf-77ec20ae8ce4 FIRST class",
+      "expected": "201 Created (if full) or 400 (if seats still available)",
+      "actual": "{\"detail\":\"FIRST class has 2 seats available. Waitlist can only be joined when the class is full.\"}",
+      "status_code": 409,
+      "passed": true,
+      "db_records": "waitlist_entries (WAITING) if created",
+      "error": "-"
+    },
+    {
+      "feature": "Schedule Change",
+      "endpoint": "PUT /admin/flights/3f85edf4-9c4e-4b32-97bf-77ec20ae8ce4/schedule",
+      "input": "Super Admin rescheduling departure & arrival",
+      "expected": "200 OK with schedule change recorded and refund/rebook triggered",
+      "actual": "{\"id\":\"3f85edf4-9c4e-4b32-97bf-77ec20ae8ce4\",\"flight_number\":\"QA-100\",\"origin\":\"LHE\",\"destination\":\"DXB\",\"departure_at\":\"2026-09-11T21:57:27.577932Z\",\"arrival_at\":\"2026-09-12T01:57:27.577932Z\",\"aircra",
+      "status_code": 200,
+      "passed": true,
+      "db_records": "schedule_changes, flights, audit_logs",
+      "error": "-"
+    }
+  ],
+  "counts": {
+    "users": 5,
+    "flights": 2,
+    "seat_inventory": 3,
+    "physical_seats": 7,
+    "seat_holds": 2,
+    "bookings": 1,
+    "passengers": 1,
+    "refunds": 1,
+    "waitlist_entries": 0,
+    "audit_logs": 7,
+    "idempotency_keys": 17,
+    "schedule_changes": 1
+  }
+}

@@ -13,7 +13,7 @@ class FlightSeat(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     flight_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("flights.id", ondelete="CASCADE"), nullable=False)
     seat_number: Mapped[str] = mapped_column(String(5), nullable=False)
-    seat_class: Mapped[SeatClass] = mapped_column(Enum(SeatClass), nullable=False)
+    seat_class: Mapped[SeatClass] = mapped_column(Enum(SeatClass, name='seat_class'), nullable=False)
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
     
     # Links to hold/booking

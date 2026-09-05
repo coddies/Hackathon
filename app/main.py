@@ -64,12 +64,12 @@ register_exception_handlers(app)
 
 # Routers
 app.include_router(health.router)
-app.include_router(auth.router, prefix="/auth")
-app.include_router(admin_flights.router, prefix="/admin")
-app.include_router(flights.router, prefix="/flights")
-app.include_router(bookings.router, prefix="/bookings")
-app.include_router(waitlist.router, prefix="/waitlist")
-app.include_router(refunds.router, prefix="/refunds")
+app.include_router(auth.router)
+app.include_router(admin_flights.router)
+app.include_router(flights.router)
+app.include_router(bookings.router)
+app.include_router(waitlist.router)
+app.include_router(refunds.router)
 
 @app.get("/", tags=["Root"])
 async def root():

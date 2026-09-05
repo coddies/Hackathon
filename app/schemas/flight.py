@@ -77,7 +77,6 @@ class SeatInventoryResponse(BaseModel):
     fare_flexible: Decimal
     booking_cutoff_hours: int
     group_booking_policy: GroupBookingPolicy
-    fare_amount: dict
 
 class FlightResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

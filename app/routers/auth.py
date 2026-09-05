@@ -20,13 +20,13 @@ async def register(
                 status_code=status.HTTP_403_FORBIDDEN, 
                 detail="SUPER_ADMIN token required to create admin users"
             )
-    return await register_user(db, request)
+    return await register_user(db, email=request.email, password=request.password, full_name=request.full_name, role=request.role)
 
 @router.post("/login", response_model=TokenResponse)
 async def login(request: UserLoginRequest, db: AsyncSession = Depends(get_db)):
     user = await authenticate_user(db, request.email, request.password)
-    access_token = await create_access_token(user.id)
-    refresh_token = await create_refresh_token(user.id)
+    access_token = create_access_token(str(user.id), user.role.value)
+    refresh_token = create_refresh_token(str(user.id))
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -35,9 +35,11 @@ async def login(request: UserLoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(request: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
-    user = await decode_refresh_token(db, request.refresh_token)
-    access_token = await create_access_token(user.id)
-    refresh_token = await create_refresh_token(user.id)
+    user_id = decode_refresh_token(request.refresh_token)
+    from app.services.auth_service import get_user_by_id
+    user = await get_user_by_id(db, user_id)
+    access_token = create_access_token(str(user.id), user.role.value)
+    refresh_token = create_refresh_token(str(user.id))
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,

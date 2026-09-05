@@ -15,8 +15,8 @@ async def get_booking_refunds(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    refunds = await get_refunds_for_booking(db, booking_reference, current_user)
-    travel_credits = await get_travel_credits_for_booking(db, booking_reference, current_user)
+    refunds = await get_refunds_for_booking(db, booking_reference)
+    travel_credits = await get_travel_credits_for_booking(db, booking_reference)
     
     return {
         "booking_reference": booking_reference,

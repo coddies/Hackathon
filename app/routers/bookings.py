@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -26,7 +27,8 @@ async def hold_seats(
 
     result = await create_hold(db, request, current_user)
     
-    result_dict = result.model_dump(mode='json') if hasattr(result, 'model_dump') else result
+    result_pydantic = SeatHoldResponse.model_validate(result)
+    result_dict = jsonable_encoder(result_pydantic)
     await store_idempotency_result(db, idempotency_key, "/bookings/hold", request.model_dump(), 201, result_dict)
     
     return result
@@ -44,7 +46,8 @@ async def confirm_flight_booking(
 
     result = await confirm_booking(db, request, current_user)
     
-    result_dict = result.model_dump(mode='json') if hasattr(result, 'model_dump') else result
+    result_pydantic = BookingResponse.model_validate(result)
+    result_dict = jsonable_encoder(result_pydantic)
     await store_idempotency_result(db, idempotency_key, "/bookings", request.model_dump(), 201, result_dict)
     
     return result
@@ -69,11 +72,11 @@ async def cancel_existing_booking(
     if cached:
         return JSONResponse(status_code=cached["status_code"], content=cached["body"])
 
-    result_dict = await cancel_booking(db, booking_reference, request, current_user)
-    result = BookingCancelResponse(**result_dict)
+    result = await cancel_booking(db, booking_reference, request, current_user)
     
-    result_to_store = result.model_dump(mode='json') if hasattr(result, 'model_dump') else result
-    await store_idempotency_result(db, idempotency_key, f"/bookings/{booking_reference}/cancel", request.model_dump(), 200, result_to_store)
+    result_pydantic = BookingCancelResponse.model_validate(result)
+    result_dict = jsonable_encoder(result_pydantic)
+    await store_idempotency_result(db, idempotency_key, f"/bookings/{booking_reference}/cancel", request.model_dump(), 200, result_dict)
     
     return result
 
