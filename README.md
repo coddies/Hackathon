@@ -63,9 +63,6 @@ alembic upgrade head
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-## 📖 API Documentation
-Once the server is running, the interactive Swagger documentation is available at:
-👉 **[http://localhost:8000/docs](http://localhost:8000/docs)**
 
 ## 🛡️ Idempotency
 Critical endpoints (like booking confirmations, seat holds, and cancellations) require an `Idempotency-Key` header to prevent double-charging or duplicate resource generation in case of network retries.
