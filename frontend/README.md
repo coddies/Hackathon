@@ -1,32 +1,53 @@
-# React + TypeScript + Vite
+# ✈️ SkyFlow Frontend Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Modern, responsive React 19 single-page application built with **TypeScript**, **Vite**, and **TailwindCSS** for the SkyFlow Flight Reservation & Operations Platform.
 
-Currently, two official plugins are available:
+## 🌟 Key Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- 🔐 **JWT-Based Authentication Guard**: All application booking and search workflows are strictly protected behind `<ProtectedRoute />`.
+- 💺 **Interactive Seat Map**: Live visual cabin grid with First Class, Business Class, and Economy Class seat selection.
+- ⏱️ **Atomic Seat Hold Countdown**: Real-time 15-minute countdown timer with automatic hold expiration handling.
+- 💳 **Checkout & Fare Policy Engine**: Dynamic fare comparison (Basic, Flexible, Refundable) with instant policy calculation.
+- 📋 **Passenger Self-Service Portal**: View reservation confirmation cards, electronic boarding passes, and cancellation processing.
+- 🛠️ **Operations & Admin Console**:
+  - Live metric KPI cards (active flights, passenger volume, refund queues).
+  - Flight dispatching & schedule update modals.
+  - Multi-cabin inventory & dynamic pricing matrix.
+  - Priority waitlist management & automated escalation.
+  - Immutable audit logs viewer.
 
-## React Compiler
+## 🛠️ Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Framework**: React 19
+- **Build Tool**: Vite 8.2
+- **Language**: TypeScript 5.7
+- **Styling**: TailwindCSS 3.4
+- **Routing**: React Router 7
+- **Icons**: Lucide React
+- **HTTP Client**: Axios with JWT Request/Response Interceptors
 
-## Expanding the Oxlint configuration
+## 🚀 Running Locally
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+```bash
+# Install dependencies
+npm install
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+# Configure environment variables
+# Copy .env.example to .env and set VITE_API_BASE_URL
+cp .env.example .env
+
+# Run development server
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+* Dev Server runs at `http://localhost:5173/`
+
+## 📦 Production Build
+
+```bash
+# Typecheck and compile production bundle
+npm run build
+
+# Preview production build locally
+npm run preview
+```
