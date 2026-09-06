@@ -1,0 +1,1280 @@
+{
+  "name": "Flight Management System - Master n8n Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "Flight Management System\n\nFastAPI Backend: https://hackathon-production-4daa.up.railway.app\nSupabase: Shared PostgreSQL database\nn8n: Scheduled automation, RAG, Gmail support and fraud review\n\nCredentials required:\n1. Supabase Postgres\n2. Gmail OAuth2\n3. Google Gemini API\n4. Groq API\n5. Pinecone API",
+        "height": 210,
+        "width": 360,
+        "color": 5
+      },
+      "id": "96062427-90ae-447b-8478-7e1a6baacdf5",
+      "name": "System Information",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "27c7f42f-4692-4c04-be3f-bbade6609deb",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -624,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst hour = now.getHours();\nconst minute = now.getMinutes();\nconst day = now.getDay();\nlet job_type = 'WAITLIST_PROMOTION';\nif (minute === 0 && hour === 9 && day === 1) job_type = 'WEEKLY_OPS_REPORT';\nelse if (minute === 0 && hour === 9) job_type = 'DAILY_OPS_REPORT';\nelse if (minute === 0 && hour === 8) job_type = 'REFUND_ESCALATION';\nelse if (minute === 0 && hour === 7) job_type = 'RECENT_FRAUD_SCAN';\nelse if (minute === 0 && hour === 6 && day === 0) job_type = 'HISTORICAL_FRAUD_REVIEW';\nelse if (minute === 0) job_type = 'CHECKIN_REMINDER';\nreturn [{json:{job_type,run_at:now.toISOString()}}];"
+      },
+      "id": "7bb57958-286b-45a6-b3c3-4d4ae6249e47",
+      "name": "Choose Job Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.job_type }}",
+                    "rightValue": "CHECKIN_REMINDER",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CHECKIN_REMINDER"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.job_type }}",
+                    "rightValue": "DAILY_OPS_REPORT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "DAILY_OPS_REPORT"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.job_type }}",
+                    "rightValue": "WEEKLY_OPS_REPORT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "WEEKLY_OPS_REPORT"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.job_type }}",
+                    "rightValue": "REFUND_ESCALATION",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "REFUND_ESCALATION"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.job_type }}",
+                    "rightValue": "WAITLIST_PROMOTION",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "WAITLIST_PROMOTION"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.job_type }}",
+                    "rightValue": "RECENT_FRAUD_SCAN",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "RECENT_FRAUD_SCAN"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.job_type }}",
+                    "rightValue": "HISTORICAL_FRAUD_REVIEW",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "HISTORICAL_FRAUD_REVIEW"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cc3e81cf-78de-47bd-8fd0-12673bbb9754",
+      "name": "Switch Scheduled Job",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -144,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT b.id AS booking_id, u.full_name, u.email, f.flight_number, f.origin, f.destination, f.departure_at\nFROM bookings b\nJOIN users u ON u.id = b.user_id\nJOIN flights f ON f.id = b.flight_id\nLEFT JOIN notification_logs n ON n.booking_id = b.id AND n.notification_type = 'CHECKIN_REMINDER'\nWHERE b.status = 'CONFIRMED' AND f.status <> 'CANCELLED'\nAND f.departure_at BETWEEN NOW() + INTERVAL '23 hours' AND NOW() + INTERVAL '25 hours'\nAND n.id IS NULL;",
+        "options": {}
+      },
+      "id": "187c9bda-c2aa-4622-95fd-4458b0dfc808",
+      "name": "Find Check-in Reminders",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        144,
+        1120
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Check-in Reminder - {{ $json.flight_number }}",
+        "emailType": "text",
+        "message": "=Dear {{ $json.full_name }},\n\nThis is a reminder to check in for your upcoming flight {{ $json.flight_number }} from {{ $json.origin }} to {{ $json.destination }}, departing at {{ $json.departure_at }}.\n\nSafe travels,\nFlight Operations",
+        "options": {}
+      },
+      "id": "7ccce517-18d4-418b-9d62-438c19d40901",
+      "name": "Send Check-in Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        400,
+        1120
+      ],
+      "webhookId": "7ae7520a-3b1e-444d-8615-25e4c033a819",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "x3hza5NqFmU1gplY",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO notification_logs (booking_id, notification_type, recipient_email) VALUES ('{{ $json.booking_id }}', 'CHECKIN_REMINDER', '{{ $json.email }}');",
+        "options": {}
+      },
+      "id": "cfa9782c-91e5-43cb-8587-845b063e8287",
+      "name": "Log Check-in Reminder",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        672,
+        1120
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT f.flight_number, f.origin, f.destination, COALESCE(SUM(si.total_seats),0) total_seats, COALESCE(SUM(si.booked_seats),0) booked_seats, COALESCE(SUM(b.total_amount),0) revenue FROM flights f LEFT JOIN seat_inventory si ON si.flight_id=f.id LEFT JOIN bookings b ON b.flight_id=f.id AND b.status='CONFIRMED' WHERE f.status <> 'CANCELLED' GROUP BY f.id, f.flight_number, f.origin, f.destination;",
+        "options": {}
+      },
+      "id": "2a0dd44b-6472-4e87-b14c-3df98bfad019",
+      "name": "Get Daily Report Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        144,
+        1312
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows=items.map(i=>{const x=i.json;const total=Number(x.total_seats||0);const booked=Number(x.booked_seats||0);const load=total?((booked/total)*100).toFixed(1):0;return `${x.flight_number} | ${x.origin} -> ${x.destination} | ${booked}/${total} seats | Load ${load}% | Revenue ${x.revenue}`}); return [{json:{report:'Daily Operations Report\\n\\n'+rows.join('\\n')}}];"
+      },
+      "id": "c223d98a-eeee-484f-9a65-d17d4cc15937",
+      "name": "Format Daily Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        1312
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.OPERATIONS_EMAIL }}",
+        "subject": "Flight Operations Report",
+        "emailType": "text",
+        "message": "={{ $json.report }}",
+        "options": {}
+      },
+      "id": "d80bd08c-1bb3-4c6e-8721-f637fead4a1b",
+      "name": "Send Daily Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        1312
+      ],
+      "webhookId": "cd620d2d-8177-466b-83c1-ee1b0f877935",
+      "executeOnce": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "x3hza5NqFmU1gplY",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id AS refund_id, booking_id, amount FROM refunds WHERE status='PENDING' AND created_at < NOW() - INTERVAL '3 days' AND escalation_sent_at IS NULL;",
+        "options": {}
+      },
+      "id": "1429bc77-c7d3-4bcb-9043-fc180ce35cb2",
+      "name": "Find Unresolved Refunds",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        144,
+        1488
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.OPERATIONS_EMAIL }}",
+        "subject": "=Refund Escalation - {{ $json.refund_id }}",
+        "emailType": "text",
+        "message": "=Unresolved refund requires attention.\n\nRefund ID: {{ $json.refund_id }}\nBooking ID: {{ $json.booking_id }}\nAmount: {{ $json.amount }}\n\nThis refund has been pending beyond the escalation threshold.",
+        "options": {}
+      },
+      "id": "1ab7bc4d-3d8f-4a02-8fd1-8fba5a51635a",
+      "name": "Send Refund Escalation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        400,
+        1488
+      ],
+      "webhookId": "a7d39ece-e388-4db6-88bf-2337060b84ab",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "x3hza5NqFmU1gplY",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE refunds SET escalation_sent_at=NOW() WHERE id='{{ $json.refund_id }}';",
+        "options": {}
+      },
+      "id": "b0bf9d4b-d802-4f4e-a05b-5b81b257500f",
+      "name": "Mark Refund Escalated",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        672,
+        1488
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH candidate AS (SELECT w.id FROM waitlist_entries w JOIN seat_inventory s ON s.flight_id=w.flight_id AND s.seat_class=w.seat_class JOIN flights f ON f.id=w.flight_id WHERE w.status='WAITING' AND f.status <> 'CANCELLED' AND s.available_seats >= w.passenger_count ORDER BY w.priority_score DESC,w.created_at ASC FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE waitlist_entries w SET status='PROMOTED',promoted_at=NOW(),claim_expires_at=NOW()+INTERVAL '2 hours' FROM candidate c WHERE w.id=c.id RETURNING w.id AS waitlist_id,w.user_id,w.flight_id,w.claim_expires_at;",
+        "options": {}
+      },
+      "id": "9116ab37-4f83-4b4f-ac5b-ae7e89a4bb8b",
+      "name": "Promote Waitlist Passenger",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        144,
+        1664
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.full_name,u.email,f.flight_number,f.origin,f.destination,w.claim_expires_at FROM waitlist_entries w JOIN users u ON u.id=w.user_id JOIN flights f ON f.id=w.flight_id WHERE w.id='{{ $json.waitlist_id }}';",
+        "options": {}
+      },
+      "id": "2981d593-dcc4-4b44-937b-cede98aa3faa",
+      "name": "Get Waitlist Passenger",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        400,
+        1664
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Seat Available - {{ $json.flight_number }}",
+        "emailType": "text",
+        "message": "=Dear {{ $json.full_name }},\n\nGood news! A seat has become available on flight {{ $json.flight_number }} from {{ $json.origin }} to {{ $json.destination }}.\n\nPlease claim your seat before {{ $json.claim_expires_at }} or the offer will be released to the next waitlisted passenger.\n\nFlight Operations",
+        "options": {}
+      },
+      "id": "108cdae6-e210-4e0f-9691-8d3a0a6da67b",
+      "name": "Send Waitlist Offer",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        1664
+      ],
+      "webhookId": "9b0ce4ac-d1a4-48ed-92aa-0e86ada2455a",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "x3hza5NqFmU1gplY",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id,booking_reference,user_id,flight_id,passenger_count,booked_at FROM bookings WHERE booked_at >= NOW()-INTERVAL '24 hours';",
+        "options": {}
+      },
+      "id": "61f29175-5b67-443e-802a-dcb5b5d5e222",
+      "name": "Get Recent Bookings",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        144,
+        1840
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(i=>{const b=i.json;const risk_score=Number(b.passenger_count)>=5?80:10;return {json:{...b,risk_score}}});"
+      },
+      "id": "bab97e84-9bd1-4585-bf35-38aea519711e",
+      "name": "Calculate Fraud Risk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs(action,entity_type,entity_id,new_data,reason) VALUES('FRAUD_SCAN_RESULT','BOOKING','{{ $json.id }}',jsonb_build_object('risk_score',{{ $json.risk_score }}),'Scheduled recent booking fraud scan');",
+        "options": {}
+      },
+      "id": "fd4707b5-9188-4366-9ada-98ed39083b25",
+      "name": "Save Fraud Result",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        672,
+        1840
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id,booking_reference,user_id,flight_id,passenger_count,booked_at FROM bookings WHERE booked_at < NOW()-INTERVAL '24 hours' ORDER BY booked_at DESC LIMIT 100;",
+        "options": {}
+      },
+      "id": "f9a07787-ac43-4851-b319-9703efe8621c",
+      "name": "Get Historical Booking Batch",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        144,
+        2032
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs(action,entity_type,entity_id,new_data,reason) VALUES('HISTORICAL_FRAUD_REVIEW','BOOKING','{{ $json.id }}',jsonb_build_object('booking_reference','{{ $json.booking_reference }}'),'Weekly historical fraud review');",
+        "options": {}
+      },
+      "id": "f7893f92-5155-4620-b8b6-eb27aa31d5e3",
+      "name": "Save Historical Review",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        400,
+        2032
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "3f667761-7135-4d8b-bf44-02ec47559305",
+      "name": "Manual Policy Ingestion Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "policy-text",
+              "name": "policy_text",
+              "value": "Paste airline cancellation, refund, rebooking, fare, baggage and check-in policy text here before execution.",
+              "type": "string"
+            },
+            {
+              "id": "policy-source",
+              "name": "policy_source",
+              "value": "Flight Management System Policy",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3f83525c-829f-4596-aa0d-91f318de7bdb",
+      "name": "Set Policy Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1392,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const text=$json.policy_text||'';const size=900;const overlap=150;const chunks=[];for(let i=0;i<text.length;i+=size-overlap){chunks.push({json:{pageContent:text.slice(i,i+size),metadata:{source:$json.policy_source,chunk:i/(size-overlap)}}});}return chunks;"
+      },
+      "id": "0663c69a-960a-40f2-8847-3ebe07e4691c",
+      "name": "Chunk Policy Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "hackathon",
+          "mode": "list",
+          "cachedResultName": "hackathon"
+        },
+        "options": {
+          "pineconeNamespace": "airline-policies"
+        }
+      },
+      "id": "89dc5fb1-5374-494e-8358-70e8cd9c4210",
+      "name": "Pinecone Insert Policy Documents",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.1,
+      "position": [
+        1888,
+        960
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "2tLzcfd5v30yM2af",
+          "name": "Pinecone account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "c72537cc-da3e-4588-814d-821948689e1f",
+      "name": "Google Gemini Embeddings Ingestion",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1888,
+        1104
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "96ZKRftTyPLAeuN3",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "9ce9e277-871e-4805-81ee-5075cc83362b",
+      "name": "Policy Document Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        368,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "labelIds": [
+            "INBOX"
+          ]
+        }
+      },
+      "id": "2b5d09c1-de58-4caa-bfbd-af77a1072921",
+      "name": "Gmail Support Email Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        1152,
+        1424
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "x3hza5NqFmU1gplY",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const text=$json.textPlain||$json.snippet||$json.textHtml||'';const match=text.match(/(?:booking|reference|pnr)\\s*[:#-]?\\s*([A-Za-z0-9-]+)/i);return [{json:{booking_reference:match?match[1]:'',question:text,sender_email:$json.from?.email||$json.from||''}}];"
+      },
+      "id": "421c8c79-ed3a-478f-b2fa-ea9a2c8d0ae3",
+      "name": "Extract Booking Reference And Question",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        1424
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT b.id AS booking_id,b.booking_reference,b.fare_type,b.cancellation_outcome,u.full_name,u.email FROM bookings b JOIN users u ON u.id=b.user_id WHERE b.booking_reference='{{ $json.booking_reference }}' LIMIT 1;",
+        "options": {}
+      },
+      "id": "da18ac8d-4cce-4334-9e8e-f5a687ae5eee",
+      "name": "Get Booking Fare Rule",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1632,
+        1424
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "rag-query",
+              "name": "query",
+              "value": "=Fare type: {{ $json.fare_type }}. Cancellation outcome: {{ $json.cancellation_outcome }}. Passenger question: {{ $('Extract Booking Reference And Question').first().json.question }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "93bb3999-f8ee-4df4-862d-212d1a1efad9",
+      "name": "Prepare Policy Search Query",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1888,
+        1424
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "load",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "hackathon",
+          "mode": "list",
+          "cachedResultName": "hackathon"
+        },
+        "prompt": "={{ $json.query }}",
+        "topK": 5,
+        "options": {
+          "pineconeNamespace": "airline-policies"
+        }
+      },
+      "id": "ee07712f-1f48-45ff-b779-efaa6af2e5cd",
+      "name": "Pinecone Retrieve Policy Context",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.1,
+      "position": [
+        2144,
+        1424
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "2tLzcfd5v30yM2af",
+          "name": "Pinecone account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "338ae5bf-9514-4b5b-b17b-5197712430b2",
+      "name": "Google Gemini Embeddings Retrieval",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2144,
+        1568
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "96ZKRftTyPLAeuN3",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Passenger name: {{ $('Get Booking Fare Rule').first().json.full_name }}\nBooking reference: {{ $('Get Booking Fare Rule').first().json.booking_reference }}\nActual fare type: {{ $('Get Booking Fare Rule').first().json.fare_type }}\nCancellation outcome: {{ $('Get Booking Fare Rule').first().json.cancellation_outcome }}\nPassenger question: {{ $('Extract Booking Reference And Question').first().json.question }}\n\nRetrieved airline policy context:\n{{ $('Pinecone Retrieve Policy Context').all().map(d => d.json.document ? d.json.document.pageContent : (d.json.pageContent || d.json.text || '')).join('\\n\\n') }}\n\nDraft a clear support-email answer. Use ONLY the actual fare rule above plus the retrieved airline policy context. Do not give generic policy answers. Do not invent policy. Do not promise refund, rebooking, travel credit or compensation unless the fare rule and retrieved policy explicitly allow it. End with: Draft only — human approval required before sending."
+      },
+      "id": "49ea5773-5ae5-4617-adc4-749ee0efb8ae",
+      "name": "Draft Airline Policy Answer",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        2400,
+        1424
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "885209fe-acd5-4c1f-9e98-652409f7a660",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        1584
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "KrbD4XpiILOX3YnU",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs(action,entity_type,entity_id,new_data,reason) VALUES('RAG_POLICY_DRAFT_CREATED','BOOKING','{{ $('Get Booking Fare Rule').first().json.booking_id }}',jsonb_build_object('booking_reference','{{ $('Get Booking Fare Rule').first().json.booking_reference }}','passenger_email','{{ $('Get Booking Fare Rule').first().json.email }}','draft','{{ $json.text || $json.response || JSON.stringify($json) }}'),'PENDING_APPROVAL');",
+        "options": {}
+      },
+      "id": "ad3235a3-8549-4466-9af5-acd2ba73270f",
+      "name": "Save Pending RAG Draft",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2672,
+        1424
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "ImeZCqaN2ikeFqQC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.OPERATIONS_EMAIL }}",
+        "subject": "=FMS Approval Required - {{ $('Get Booking Fare Rule').first().json.booking_reference }}",
+        "emailType": "text",
+        "message": "=A RAG policy answer draft is pending your approval before it can be sent to the passenger.\n\nPassenger: {{ $('Get Booking Fare Rule').first().json.full_name }} <{{ $('Get Booking Fare Rule').first().json.email }}>\nBooking reference: {{ $('Get Booking Fare Rule').first().json.booking_reference }}\nFare type: {{ $('Get Booking Fare Rule').first().json.fare_type }}\n\n--- DRAFT ANSWER ---\n{{ $('Draft Airline Policy Answer').first().json.text }}\n\nDo NOT send to the passenger until approved.",
+        "options": {}
+      },
+      "id": "daaf4aaa-3881-443d-b40b-4cdd2d83d4ae",
+      "name": "Email Admin For Approval",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2928,
+        1424
+      ],
+      "webhookId": "14147557-8c32-4814-b368-d8c49dc60c66",
+      "executeOnce": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "x3hza5NqFmU1gplY",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Choose Job Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose Job Type": {
+      "main": [
+        [
+          {
+            "node": "Switch Scheduled Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Scheduled Job": {
+      "main": [
+        [
+          {
+            "node": "Find Check-in Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Daily Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Daily Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Unresolved Refunds",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Promote Waitlist Passenger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Recent Bookings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Historical Booking Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Check-in Reminders": {
+      "main": [
+        [
+          {
+            "node": "Send Check-in Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Check-in Email": {
+      "main": [
+        [
+          {
+            "node": "Log Check-in Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Daily Report Data": {
+      "main": [
+        [
+          {
+            "node": "Format Daily Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Daily Report": {
+      "main": [
+        [
+          {
+            "node": "Send Daily Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Unresolved Refunds": {
+      "main": [
+        [
+          {
+            "node": "Send Refund Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Refund Escalation": {
+      "main": [
+        [
+          {
+            "node": "Mark Refund Escalated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Promote Waitlist Passenger": {
+      "main": [
+        [
+          {
+            "node": "Get Waitlist Passenger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Waitlist Passenger": {
+      "main": [
+        [
+          {
+            "node": "Send Waitlist Offer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Recent Bookings": {
+      "main": [
+        [
+          {
+            "node": "Calculate Fraud Risk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Fraud Risk": {
+      "main": [
+        [
+          {
+            "node": "Save Fraud Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Historical Booking Batch": {
+      "main": [
+        [
+          {
+            "node": "Save Historical Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Policy Ingestion Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Policy Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Policy Text": {
+      "main": [
+        [
+          {
+            "node": "Chunk Policy Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Policy Text": {
+      "main": [
+        [
+          {
+            "node": "Pinecone Insert Policy Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Embeddings Ingestion": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Insert Policy Documents",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy Document Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Pinecone Insert Policy Documents",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Support Email Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Booking Reference And Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Booking Reference And Question": {
+      "main": [
+        [
+          {
+            "node": "Get Booking Fare Rule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Booking Fare Rule": {
+      "main": [
+        [
+          {
+            "node": "Prepare Policy Search Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Policy Search Query": {
+      "main": [
+        [
+          {
+            "node": "Pinecone Retrieve Policy Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Retrieve Policy Context": {
+      "main": [
+        [
+          {
+            "node": "Draft Airline Policy Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Embeddings Retrieval": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Retrieve Policy Context",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Airline Policy Answer": {
+      "main": [
+        [
+          {
+            "node": "Save Pending RAG Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Draft Airline Policy Answer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Pending RAG Draft": {
+      "main": [
+        [
+          {
+            "node": "Email Admin For Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "25fe140b-c129-4a56-b85f-6381457a9621",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5bbe78324c26d660133db87f7d7240bc9074a47e60a095d836ce45a0b760bd51"
+  },
+  "nodeGroups": [],
+  "id": "yrrNG2igYv0TJGWf",
+  "tags": []
+}
