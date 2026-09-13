@@ -1,0 +1,33 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # Runs every 6 days at 3:00 AM UTC
+    - cron: '0 3 */6 * *'
+  # Also allow manual trigger from GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    name: Ping Supabase & Seed Dummy Data
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install asyncpg python-dotenv
+
+      - name: Run keep-alive seeder
+        run: python scripts/seed_dummy_data.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Report success
+        run: echo "✅ Supabase keep-alive completed at $(date -u)"

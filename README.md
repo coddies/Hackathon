@@ -208,6 +208,116 @@ The application provides quick role-fill buttons on the `/login` page:
 
 ---
 
+---
+
+## 🤖 n8n Automation Setup
+
+SkyFlow uses **n8n** for all scheduled automations, RAG support, and background jobs.
+The complete workflow is in `n8n-production.json`.
+
+### Step 1: Import Workflow
+
+1. Sign up at [n8n.cloud](https://n8n.cloud) (free trial) or self-host n8n
+2. Go to **Workflows → Import from file**
+3. Upload `n8n-production.json`
+
+### Step 2: Configure 5 Credentials
+
+Run the setup guide for instructions:
+```bash
+bash scripts/setup-n8n-credentials.sh
+```
+
+| # | Credential Name (exact) | Where to Get |
+|---|---|---|
+| 1 | `Postgres account` | Supabase Dashboard → Settings → Database |
+| 2 | `Gmail account` | Google Cloud Console → Gmail OAuth2 |
+| 3 | `Google Gemini(PaLM) Api account` | [aistudio.google.com](https://aistudio.google.com) |
+| 4 | `Groq account` | [console.groq.com](https://console.groq.com) |
+| 5 | `Pinecone account` | [app.pinecone.io](https://app.pinecone.io) |
+
+### Step 3: Set Environment Variables in n8n
+
+Go to **n8n → Settings → Environment Variables**:
+
+```
+OPERATIONS_EMAIL = your-admin@gmail.com
+FMS_BACKEND_URL  = https://hackathon-production-4daa.up.railway.app
+```
+
+### Step 4: Create Pinecone Index
+
+In Pinecone dashboard, create an index named **`hackathon`**:
+- **Dimensions:** `768` (Gemini text-embedding-004)
+- **Metric:** `cosine`
+- **Namespace:** `airline-policies`
+
+### Step 5: Ingest Policy Documents
+
+1. Open the `Set Policy Content` node in n8n
+2. Paste your airline policy text in the `policy_text` field
+3. Click **"Test workflow"** on the Policy Ingestion flow (starts with "Manual Policy Ingestion Trigger")
+
+### Step 6: Activate Workflow
+
+Toggle the workflow **Active** in n8n. All automations will now run on schedule.
+
+### What Each Automation Does
+
+| Automation | Schedule | Description |
+|---|---|---|
+| ✈️ Check-in Reminder | Every hour at :00 | Emails passengers 24h before departure |
+| 💰 Price-drop Alert | Every 6h at :30 | Alerts passengers when fare drops >10% |
+| 📊 Daily Ops Report | 9 AM UTC daily | Load factor + revenue per flight |
+| 📈 Weekly Ops Report | 9 AM UTC Monday | 7-day aggregated performance |
+| ⚠️ Refund Escalation | 8 AM UTC daily | Alerts admin for refunds pending >3 days |
+| ⏳ Waitlist Promotion | Every 15 min | `FOR UPDATE SKIP LOCKED` seat assignment |
+| 🔍 Fraud Scan (recent) | 7 AM UTC daily | Scores last 24h bookings for risk |
+| 🗂️ Fraud Review (historical) | 6 AM UTC Sunday | Batch review of 100 older bookings |
+| 🤖 RAG Support | On every inbox email | Drafts policy answer + sends for human approval |
+| 📚 Policy Ingestion | Manual trigger | Chunks + embeds policy docs into Pinecone |
+| 💤 Supabase Keep-alive | Every 6 days at 3 AM | Prevents free-tier DB hibernation |
+
+---
+
+## 💤 Supabase Keep-Alive
+
+Supabase free tier hibernates after **7 days of inactivity**.
+Two layers of protection are included:
+
+### Option A: n8n (automatic)
+The `Keep-Alive Trigger` node in `n8n-production.json` runs `SELECT COUNT(*) FROM flights` every 6 days automatically.
+
+### Option B: GitHub Actions (manual fallback)
+
+Create `.github/workflows/keep-alive.yml`:
+
+```yaml
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    - cron: '0 3 */6 * *'  # Every 6 days at 3 AM UTC
+  workflow_dispatch:        # Also allow manual trigger
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install asyncpg python-dotenv
+      - run: python scripts/seed_dummy_data.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+```
+
+Then add `DATABASE_URL` as a GitHub Actions secret.
+
+---
+
 ## 📄 License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
