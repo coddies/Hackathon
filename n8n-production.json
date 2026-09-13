@@ -428,6 +428,19 @@
 
     {
       "parameters": {
+        "jsCode": "// Stop flow if promotion query returned no rows (nobody was waiting)\nconst rows = $input.all();\nif (!rows || rows.length === 0) return [];\nconst first = rows[0].json;\nif (!first.waitlist_id || first.waitlist_id === 'undefined' || first.waitlist_id === null) return [];\nreturn rows;",
+        "options": {}
+      },
+      "id": "00000000-0000-0000-0000-000000000060b",
+      "name": "Check If Promoted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [210, 1620]
+    },
+
+
+    {
+      "parameters": {
         "operation": "executeQuery",
         "query": "SELECT\n  w.passenger_name AS full_name,\n  w.email,\n  f.flight_number,\n  f.origin,\n  f.destination,\n  f.departure_at,\n  w.seat_class,\n  w.fare_type,\n  w.promoted_at,\n  w.claim_expires_at\nFROM waitlist_entries w\nJOIN flights f ON f.id = w.flight_id\nWHERE w.id = '{{ $json.waitlist_id }}'::uuid;",
         "options": {}
@@ -973,6 +986,9 @@
       "main": [[{ "node": "Mark Refund Escalated", "type": "main", "index": 0 }]]
     },
     "Promote Top Waitlist Passenger": {
+      "main": [[{ "node": "Check If Promoted", "type": "main", "index": 0 }]]
+    },
+    "Check If Promoted": {
       "main": [[{ "node": "Get Promoted Passenger Details", "type": "main", "index": 0 }]]
     },
     "Get Promoted Passenger Details": {
