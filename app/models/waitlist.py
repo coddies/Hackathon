@@ -39,6 +39,7 @@ class WaitlistEntry(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     promoted_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claim_expires_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     flight: Mapped["Flight"] = relationship("Flight", back_populates="waitlist_entries")
     user: Mapped["User"] = relationship("User", back_populates="waitlist_entries")

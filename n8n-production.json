@@ -410,7 +410,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH candidate AS (\n  SELECT w.id\n  FROM waitlist_entries w\n  JOIN seat_inventory s ON s.flight_id = w.flight_id AND s.seat_class = w.seat_class\n  JOIN flights f ON f.id = w.flight_id\n  WHERE w.status = 'WAITING'\n    AND f.status <> 'CANCELLED'\n    AND f.departure_at > NOW()\n    AND s.available_seats >= 1\n  ORDER BY w.priority_score ASC, w.created_at ASC\n  FOR UPDATE SKIP LOCKED\n  LIMIT 1\n)\nUPDATE waitlist_entries w\nSET\n  status = 'PROMOTED',\n  promoted_at = NOW()\nFROM candidate c\nWHERE w.id = c.id\nRETURNING\n  w.id AS waitlist_id,\n  w.user_id,\n  w.flight_id,\n  w.passenger_name,\n  w.email,\n  w.seat_class,\n  w.fare_type,\n  w.promoted_at;",
+        "query": "WITH candidate AS (\n  SELECT w.id\n  FROM waitlist_entries w\n  JOIN seat_inventory s ON s.flight_id = w.flight_id AND s.seat_class = w.seat_class\n  JOIN flights f ON f.id = w.flight_id\n  WHERE w.status = 'WAITING'\n    AND f.status <> 'CANCELLED'\n    AND f.departure_at > NOW()\n    AND s.available_seats >= 1\n  ORDER BY w.priority_score ASC, w.created_at ASC\n  FOR UPDATE SKIP LOCKED\n  LIMIT 1\n)\nUPDATE waitlist_entries w\nSET\n  status = 'PROMOTED',\n  promoted_at = NOW(),\n  claim_expires_at = NOW() + INTERVAL '2 hours'\nFROM candidate c\nWHERE w.id = c.id\nRETURNING\n  w.id AS waitlist_id,\n  w.user_id,\n  w.flight_id,\n  w.passenger_name,\n  w.email,\n  w.seat_class,\n  w.fare_type,\n  w.claim_expires_at;",
         "options": {}
       },
       "id": "00000000-0000-0000-0000-000000000060",
@@ -429,7 +429,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  w.passenger_name AS full_name,\n  w.email,\n  f.flight_number,\n  f.origin,\n  f.destination,\n  f.departure_at,\n  w.seat_class,\n  w.fare_type,\n  w.promoted_at,\n  w.promoted_at + INTERVAL '2 hours' AS claim_deadline\nFROM waitlist_entries w\nJOIN flights f ON f.id = w.flight_id\nWHERE w.id = '{{ $json.waitlist_id }}'::uuid;",
+        "query": "SELECT\n  w.passenger_name AS full_name,\n  w.email,\n  f.flight_number,\n  f.origin,\n  f.destination,\n  f.departure_at,\n  w.seat_class,\n  w.fare_type,\n  w.promoted_at,\n  w.claim_expires_at\nFROM waitlist_entries w\nJOIN flights f ON f.id = w.flight_id\nWHERE w.id = '{{ $json.waitlist_id }}'::uuid;",
         "options": {}
       },
       "id": "00000000-0000-0000-0000-000000000061",
