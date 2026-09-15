@@ -1,1076 +1,487 @@
 {
-  "name": "SkyFlow FMS — Production Automation Master",
+  "name": "SkyFlow FMS — Production Automation (Individual Triggers)",
   "nodes": [
     {
       "parameters": {
-        "content": "✈️ SkyFlow Flight Management System\n\nBackend: https://hackathon-production-4daa.up.railway.app\nDatabase: Supabase PostgreSQL (shared ledger)\nn8n: Scheduled automation, RAG support, Gmail, Fraud review\n\nCredentials required:\n1. Postgres account      → Supabase connection\n2. Gmail account         → Gmail OAuth2\n3. Google Gemini(PaLM)  → Embeddings\n4. Groq account          → LLM drafting\n5. Pinecone account      → Vector store\n\nEnv vars:\n  OPERATIONS_EMAIL — admin email for approvals/reports\n  FMS_BACKEND_URL  — FastAPI backend URL",
-        "height": 280,
-        "width": 420,
+        "content": "✈️ SkyFlow FMS — n8n Production Automation\n\nEach automation has its OWN trigger — no switch case!\n\nCredentials needed:\n1. Postgres account      → Supabase DB\n2. Gmail account         → Gmail OAuth2\n3. Google Gemini(PaLM)  → Embeddings\n4. Groq account          → LLM\n5. Pinecone account      → Vector store\n\nEnv vars:\n  OPERATIONS_EMAIL — your admin email",
+        "height": 220,
+        "width": 380,
         "color": 5
       },
-      "id": "00000000-0000-0000-0000-000000000001",
-      "name": "System Information",
+      "id": "note-001",
+      "name": "System Info",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-680, 700]
+      "position": [-500, -200]
     },
 
     {
-      "parameters": {
-        "content": "🔄 KEEP-ALIVE FLOW\nRuns every 6 days at 3 AM\nPrevents Supabase free-tier hibernation",
-        "height": 80,
-        "width": 300,
-        "color": 4
-      },
-      "id": "00000000-0000-0000-0000-000000000002",
-      "name": "Keep-Alive Note",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [-680, 180]
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 3 */6 * *" }] } },
+      "id": "ka-001", "name": "Keep-Alive Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [-500, 100]
     },
-
-    {
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "cronExpression",
-              "expression": "0 3 */6 * *"
-            }
-          ]
-        }
-      },
-      "id": "00000000-0000-0000-0000-000000000003",
-      "name": "Keep-Alive Trigger",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [-420, 280]
-    },
-
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT COUNT(*) AS flight_count, NOW() AS pinged_at FROM flights WHERE status = 'SCHEDULED';\nINSERT INTO audit_logs (id, actor_role, action, entity_type, new_data, reason, created_at)\nVALUES (gen_random_uuid(), 'SYSTEM', 'KEEP_ALIVE_PING', 'system', '{\"source\": \"n8n_keep_alive\"}'::jsonb, 'Scheduled keep-alive to prevent Supabase hibernation', NOW());",
+        "query": "SELECT COUNT(*) AS active_flights FROM flights WHERE status = 'SCHEDULED';\nINSERT INTO audit_logs (id, actor_role, action, entity_type, new_data, reason, created_at) VALUES (gen_random_uuid(), 'SYSTEM', 'KEEP_ALIVE_PING', 'system', '{\"source\":\"n8n_keep_alive\"}'::jsonb, 'Supabase keep-alive', NOW());",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000004",
-      "name": "Supabase Keep-Alive Ping",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [-160, 280],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
+      "id": "ka-002", "name": "Keep-Alive DB Ping",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [-260, 100],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
     },
 
     {
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "minutes",
-              "minutesInterval": 15
-            }
-          ]
-        }
-      },
-      "id": "00000000-0000-0000-0000-000000000010",
-      "name": "Main Schedule Trigger",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [-680, 1000]
+      "parameters": { "rule": { "interval": [{ "field": "hours", "hoursInterval": 1 }] } },
+      "id": "ci-001", "name": "Check-in Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [-500, 280]
     },
-
-    {
-      "parameters": {
-        "jsCode": "const now = new Date();\nconst hour = now.getUTCHours();\nconst minute = now.getUTCMinutes();\nconst day = now.getUTCDay(); // 0=Sun, 1=Mon\n\n// Default: run waitlist promotion every cycle\nlet job_type = 'WAITLIST_PROMOTION';\n\n// Every day at 09:00 UTC → ops reports\nif (minute === 0 && hour === 9 && day === 1) {\n  job_type = 'WEEKLY_OPS_REPORT';\n} else if (minute === 0 && hour === 9) {\n  job_type = 'DAILY_OPS_REPORT';\n}\n// Every day at 08:00 UTC → refund escalation\nelse if (minute === 0 && hour === 8) {\n  job_type = 'REFUND_ESCALATION';\n}\n// Every day at 07:00 UTC → recent fraud scan\nelse if (minute === 0 && hour === 7) {\n  job_type = 'RECENT_FRAUD_SCAN';\n}\n// Every Sunday at 06:00 UTC → historical fraud review\nelse if (minute === 0 && hour === 6 && day === 0) {\n  job_type = 'HISTORICAL_FRAUD_REVIEW';\n}\n// Every hour on the hour → check-in reminders\nelse if (minute === 0) {\n  job_type = 'CHECKIN_REMINDER';\n}\n// Every 6 hours at :30 → price-drop alerts\nelse if (minute === 30 && [0, 6, 12, 18].includes(hour)) {\n  job_type = 'PRICE_DROP_ALERT';\n}\n\nreturn [{ json: { job_type, run_at: now.toISOString() } }];",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000011",
-      "name": "Determine Job Type",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [-440, 1000]
-    },
-
-    {
-      "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
-                "conditions": [{ "leftValue": "={{ $json.job_type }}", "rightValue": "CHECKIN_REMINDER", "operator": { "type": "string", "operation": "equals" } }],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "CHECKIN_REMINDER"
-            },
-            {
-              "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
-                "conditions": [{ "leftValue": "={{ $json.job_type }}", "rightValue": "DAILY_OPS_REPORT", "operator": { "type": "string", "operation": "equals" } }],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "DAILY_OPS_REPORT"
-            },
-            {
-              "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
-                "conditions": [{ "leftValue": "={{ $json.job_type }}", "rightValue": "WEEKLY_OPS_REPORT", "operator": { "type": "string", "operation": "equals" } }],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "WEEKLY_OPS_REPORT"
-            },
-            {
-              "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
-                "conditions": [{ "leftValue": "={{ $json.job_type }}", "rightValue": "REFUND_ESCALATION", "operator": { "type": "string", "operation": "equals" } }],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "REFUND_ESCALATION"
-            },
-            {
-              "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
-                "conditions": [{ "leftValue": "={{ $json.job_type }}", "rightValue": "WAITLIST_PROMOTION", "operator": { "type": "string", "operation": "equals" } }],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "WAITLIST_PROMOTION"
-            },
-            {
-              "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
-                "conditions": [{ "leftValue": "={{ $json.job_type }}", "rightValue": "RECENT_FRAUD_SCAN", "operator": { "type": "string", "operation": "equals" } }],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "RECENT_FRAUD_SCAN"
-            },
-            {
-              "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
-                "conditions": [{ "leftValue": "={{ $json.job_type }}", "rightValue": "HISTORICAL_FRAUD_REVIEW", "operator": { "type": "string", "operation": "equals" } }],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "HISTORICAL_FRAUD_REVIEW"
-            },
-            {
-              "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 1 },
-                "conditions": [{ "leftValue": "={{ $json.job_type }}", "rightValue": "PRICE_DROP_ALERT", "operator": { "type": "string", "operation": "equals" } }],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "PRICE_DROP_ALERT"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000012",
-      "name": "Route to Job Handler",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.2,
-      "position": [-200, 1000]
-    },
-
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  b.id AS booking_id,\n  u.full_name,\n  u.email,\n  f.flight_number,\n  f.origin,\n  f.destination,\n  f.departure_at AT TIME ZONE 'UTC' AS departure_at\nFROM bookings b\nJOIN users u ON u.id = b.user_id\nJOIN flights f ON f.id = b.flight_id\nLEFT JOIN notification_logs n\n  ON n.booking_id = b.id AND n.notification_type = 'CHECKIN_REMINDER'\nWHERE b.status = 'CONFIRMED'\n  AND f.status <> 'CANCELLED'\n  AND f.departure_at BETWEEN NOW() + INTERVAL '23 hours' AND NOW() + INTERVAL '25 hours'\n  AND n.id IS NULL;",
+        "query": "SELECT b.id AS booking_id, u.full_name, u.email, f.flight_number, f.origin, f.destination, f.departure_at AT TIME ZONE 'UTC' AS departure_at FROM bookings b JOIN users u ON u.id = b.user_id JOIN flights f ON f.id = b.flight_id LEFT JOIN notification_logs n ON n.booking_id = b.id AND n.notification_type = 'CHECKIN_REMINDER' WHERE b.status = 'CONFIRMED' AND f.status <> 'CANCELLED' AND f.departure_at BETWEEN NOW() + INTERVAL '23 hours' AND NOW() + INTERVAL '25 hours' AND n.id IS NULL;",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000020",
-      "name": "Find Upcoming Check-ins",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [80, 820],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
+      "id": "ci-002", "name": "Find Upcoming Check-ins",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [-260, 280],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
     },
-
     {
       "parameters": {
         "sendTo": "={{ $json.email }}",
         "subject": "=✈️ Check-in Reminder — {{ $json.flight_number }}",
         "emailType": "html",
-        "message": "=<html><body style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n<h2 style=\"color: #1a73e8;\">✈️ Check-in Reminder</h2>\n<p>Dear {{ $json.full_name }},</p>\n<p>Your flight is departing in approximately <strong>24 hours</strong>. Please remember to check in.</p>\n<table style=\"border-collapse: collapse; width: 100%; margin: 20px 0;\">\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Flight</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.flight_number }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Route</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.origin }} → {{ $json.destination }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Departure</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.departure_at }}</td></tr>\n</table>\n<p style=\"color: #666; font-size: 12px;\">Safe travels from SkyFlow.</p>\n</body></html>",
+        "message": "=<html><body style=\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px\"><h2 style=\"color:#1a73e8\">✈️ Check-in Reminder</h2><p>Dear {{ $json.full_name }},</p><p>Your flight departs in <strong>~24 hours</strong>. Please check in online.</p><table style=\"border-collapse:collapse;width:100%;margin:15px 0\"><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Flight</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.flight_number }}</td></tr><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Route</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.origin }} → {{ $json.destination }}</td></tr><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Departure</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.departure_at }}</td></tr></table><p style=\"color:#666;font-size:12px\">Safe travels — SkyFlow</p></body></html>",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000021",
-      "name": "Send Check-in Reminder",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [340, 820],
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "GMAIL_CREDENTIAL_ID",
-          "name": "Gmail account"
-        }
-      }
+      "id": "ci-003", "name": "Send Check-in Email",
+      "type": "n8n-nodes-base.gmail", "typeVersion": 2.1, "position": [0, 280],
+      "credentials": { "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail account" } }
     },
-
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO notification_logs (id, booking_id, notification_type, recipient_email, created_at)\nVALUES (gen_random_uuid(), '{{ $json.booking_id }}'::uuid, 'CHECKIN_REMINDER', '{{ $json.email }}', NOW())\nON CONFLICT DO NOTHING;",
+        "query": "INSERT INTO notification_logs (id, booking_id, notification_type, recipient_email, created_at) VALUES (gen_random_uuid(), '{{ $json.booking_id }}'::uuid, 'CHECKIN_REMINDER', '{{ $json.email }}', NOW()) ON CONFLICT DO NOTHING;",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000022",
-      "name": "Log Check-in Sent",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [600, 820],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
+      "id": "ci-004", "name": "Log Check-in Sent",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [260, 280],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
     },
 
+    {
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 15 }] } },
+      "id": "wl-001", "name": "Waitlist Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [-500, 460]
+    },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  f.flight_number,\n  f.origin,\n  f.destination,\n  f.status,\n  COALESCE(SUM(si.total_seats), 0) AS total_seats,\n  COALESCE(SUM(si.total_seats - si.available_seats - si.held_seats), 0) AS booked_seats,\n  COALESCE(SUM(si.held_seats), 0) AS held_seats,\n  COALESCE(SUM(b.total_amount), 0) AS revenue,\n  f.departure_at::date AS departure_date\nFROM flights f\nLEFT JOIN seat_inventory si ON si.flight_id = f.id\nLEFT JOIN bookings b ON b.flight_id = f.id AND b.status = 'CONFIRMED'\nWHERE f.status <> 'CANCELLED'\n  AND f.departure_at >= NOW()\n  AND f.departure_at < NOW() + INTERVAL '7 days'\nGROUP BY f.id, f.flight_number, f.origin, f.destination, f.status, f.departure_at\nORDER BY f.departure_at;",
+        "query": "WITH candidate AS (\n  SELECT w.id FROM waitlist_entries w\n  JOIN seat_inventory s ON s.flight_id = w.flight_id AND s.seat_class = w.seat_class\n  JOIN flights f ON f.id = w.flight_id\n  WHERE w.status = 'WAITING'\n    AND f.status <> 'CANCELLED'\n    AND f.departure_at > NOW()\n    AND s.available_seats >= 1\n  ORDER BY w.priority_score ASC, w.created_at ASC\n  FOR UPDATE SKIP LOCKED LIMIT 1\n)\nUPDATE waitlist_entries w\nSET status = 'PROMOTED', promoted_at = NOW(), claim_expires_at = NOW() + INTERVAL '2 hours'\nFROM candidate c WHERE w.id = c.id\nRETURNING w.id AS waitlist_id, w.passenger_name, w.email, w.seat_class, w.fare_type, w.flight_id, w.claim_expires_at;",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000030",
-      "name": "Get Daily Flight Stats",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [80, 1020],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
+      "id": "wl-002", "name": "Promote Waitlist Passenger",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [-260, 460],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
     },
-
     {
       "parameters": {
-        "jsCode": "const rows = items.map(i => {\n  const x = i.json;\n  const total = Number(x.total_seats || 0);\n  const booked = Number(x.booked_seats || 0);\n  const held = Number(x.held_seats || 0);\n  const load = total ? ((booked / total) * 100).toFixed(1) : 0;\n  const rev = Number(x.revenue || 0).toFixed(2);\n  return `${x.flight_number} | ${x.origin}→${x.destination} | ${x.departure_date} | Booked: ${booked}/${total} (${load}%) | Held: ${held} | Revenue: $${rev} USD`;\n});\nconst today = new Date().toISOString().split('T')[0];\nconst report = `📊 SkyFlow Daily Operations Report — ${today}\\n${'─'.repeat(70)}\\n${rows.join('\\n')}\\n${'─'.repeat(70)}\\nTotal flights: ${rows.length} | Generated: ${new Date().toISOString()}`;\nreturn [{ json: { report, flight_count: rows.length } }];",
+        "jsCode": "const rows = $input.all();\nif (!rows || rows.length === 0) return [];\nconst first = rows[0].json;\nif (!first.waitlist_id) return [];\nreturn rows;",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000031",
-      "name": "Format Daily Report",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [340, 1020]
+      "id": "wl-003", "name": "Skip If No Waitlist",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [0, 460]
     },
-
-    {
-      "parameters": {
-        "sendTo": "={{ $env.OPERATIONS_EMAIL }}",
-        "subject": "=📊 SkyFlow Daily Ops Report — {{ new Date().toISOString().split('T')[0] }}",
-        "emailType": "text",
-        "message": "={{ $json.report }}",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000032",
-      "name": "Send Daily Ops Report",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [600, 1020],
-      "executeOnce": true,
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "GMAIL_CREDENTIAL_ID",
-          "name": "Gmail account"
-        }
-      }
-    },
-
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  f.flight_number,\n  f.origin,\n  f.destination,\n  COUNT(DISTINCT b.id) AS bookings_this_week,\n  COALESCE(SUM(si.total_seats), 0) AS total_capacity,\n  COALESCE(SUM(si.total_seats - si.available_seats - si.held_seats), 0) AS booked_seats,\n  COALESCE(SUM(b.total_amount), 0) AS weekly_revenue,\n  COUNT(DISTINCT CASE WHEN b.status = 'CANCELLED' THEN b.id END) AS cancellations,\n  COUNT(DISTINCT r.id) AS refunds_issued\nFROM flights f\nLEFT JOIN seat_inventory si ON si.flight_id = f.id\nLEFT JOIN bookings b ON b.flight_id = f.id AND b.created_at >= NOW() - INTERVAL '7 days'\nLEFT JOIN refunds r ON r.booking_id = b.id\nWHERE f.departure_at >= NOW() - INTERVAL '7 days'\nGROUP BY f.id, f.flight_number, f.origin, f.destination\nORDER BY weekly_revenue DESC;",
+        "query": "SELECT w.passenger_name AS full_name, w.email, f.flight_number, f.origin, f.destination, f.departure_at, w.seat_class, w.fare_type, w.claim_expires_at FROM waitlist_entries w JOIN flights f ON f.id = w.flight_id WHERE w.id = '{{ $json.waitlist_id }}'::uuid;",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000040",
-      "name": "Get Weekly Flight Stats",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [80, 1220],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
+      "id": "wl-004", "name": "Get Waitlist Passenger Details",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [260, 460],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
     },
-
     {
       "parameters": {
-        "jsCode": "const rows = items.map(i => {\n  const x = i.json;\n  const total = Number(x.total_capacity || 0);\n  const booked = Number(x.booked_seats || 0);\n  const load = total ? ((booked / total) * 100).toFixed(1) : 0;\n  const rev = Number(x.weekly_revenue || 0).toFixed(2);\n  return `${x.flight_number} | ${x.origin}→${x.destination} | Bookings: ${x.bookings_this_week} | Load: ${load}% | Revenue: $${rev} | Cancellations: ${x.cancellations} | Refunds: ${x.refunds_issued}`;\n});\nconst week = new Date().toISOString().split('T')[0];\nconst totalRev = items.reduce((s, i) => s + Number(i.json.weekly_revenue || 0), 0);\nconst report = `📈 SkyFlow Weekly Operations Report — Week of ${week}\\n${'═'.repeat(80)}\\n${rows.join('\\n')}\\n${'═'.repeat(80)}\\nTotal Weekly Revenue: $${totalRev.toFixed(2)} USD\\nTotal Flights: ${rows.length}\\nGenerated: ${new Date().toISOString()}`;\nreturn [{ json: { report } }];",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000041",
-      "name": "Format Weekly Report",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [340, 1220]
-    },
-
-    {
-      "parameters": {
-        "sendTo": "={{ $env.OPERATIONS_EMAIL }}",
-        "subject": "=📈 SkyFlow Weekly Ops Report — {{ new Date().toISOString().split('T')[0] }}",
-        "emailType": "text",
-        "message": "={{ $json.report }}",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000042",
-      "name": "Send Weekly Ops Report",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [600, 1220],
-      "executeOnce": true,
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "GMAIL_CREDENTIAL_ID",
-          "name": "Gmail account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT\n  r.id AS refund_id,\n  r.booking_id,\n  r.amount,\n  r.currency,\n  r.created_at,\n  b.booking_reference,\n  u.email AS passenger_email,\n  u.full_name AS passenger_name,\n  EXTRACT(EPOCH FROM (NOW() - r.created_at)) / 86400 AS days_pending\nFROM refunds r\nJOIN bookings b ON b.id = r.booking_id\nJOIN users u ON u.id = b.user_id\nWHERE r.status = 'PENDING'\n  AND r.escalation_sent_at IS NULL\n  AND r.created_at < NOW() - INTERVAL '3 days'\nORDER BY r.created_at ASC;",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000050",
-      "name": "Find Stale Refunds",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [80, 1420],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "sendTo": "={{ $env.OPERATIONS_EMAIL }}",
-        "subject": "=⚠️ Refund Escalation Required — {{ $json.booking_reference }}",
+        "sendTo": "={{ $json.email }}",
+        "subject": "=🎉 Seat Available — {{ $json.flight_number }} ({{ $json.seat_class }})",
         "emailType": "html",
-        "message": "=<html><body style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n<h2 style=\"color: #d93025;\">⚠️ Refund Requires Attention</h2>\n<p>A refund has been pending for <strong>{{ Math.floor($json.days_pending) }} days</strong> and requires immediate action.</p>\n<table style=\"border-collapse: collapse; width: 100%;\">\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Refund ID</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.refund_id }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Booking Reference</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.booking_reference }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Passenger</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.passenger_name }} &lt;{{ $json.passenger_email }}&gt;</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Amount</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.currency }} {{ $json.amount }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Created At</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.created_at }}</td></tr>\n</table>\n<p style=\"color: #d93025;\">Please process this refund immediately via the admin dashboard.</p>\n</body></html>",
+        "message": "=<html><body style=\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px\"><h2 style=\"color:#1e8e3e\">🎉 A Seat Is Available!</h2><p>Dear {{ $json.full_name }},</p><p>A <strong>{{ $json.seat_class }}</strong> seat on your waitlisted flight is now available.</p><table style=\"border-collapse:collapse;width:100%;margin:15px 0\"><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Flight</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.flight_number }}</td></tr><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Route</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.origin }} → {{ $json.destination }}</td></tr><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Class</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.seat_class }} — {{ $json.fare_type }}</td></tr><tr style=\"background:#fff3cd\"><td style=\"padding:8px;border:1px solid #ddd\"><b>⏰ Book By</b></td><td style=\"padding:8px;border:1px solid #ddd;font-weight:bold\">{{ $json.claim_expires_at }}</td></tr></table><p style=\"color:#d93025\"><strong>Act within 2 hours or the seat will be offered to the next passenger.</strong></p></body></html>",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000051",
-      "name": "Escalate Refund Alert",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [340, 1420],
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "GMAIL_CREDENTIAL_ID",
-          "name": "Gmail account"
-        }
-      }
+      "id": "wl-005", "name": "Send Waitlist Offer",
+      "type": "n8n-nodes-base.gmail", "typeVersion": 2.1, "position": [520, 460],
+      "credentials": { "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail account" } }
     },
 
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }] } },
+      "id": "re-001", "name": "Refund Escalation Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [-500, 640]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT r.id AS refund_id, r.booking_id, r.amount, r.currency, r.created_at, b.booking_reference, u.email AS passenger_email, u.full_name AS passenger_name, EXTRACT(EPOCH FROM (NOW() - r.created_at)) / 86400 AS days_pending FROM refunds r JOIN bookings b ON b.id = r.booking_id JOIN users u ON u.id = b.user_id WHERE r.status = 'PENDING' AND r.escalation_sent_at IS NULL AND r.created_at < NOW() - INTERVAL '3 days' ORDER BY r.created_at ASC;",
+        "options": {}
+      },
+      "id": "re-002", "name": "Find Stale Refunds",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [-260, 640],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.OPERATIONS_EMAIL }}",
+        "subject": "=⚠️ Refund Escalation — {{ $json.booking_reference }} ({{ Math.floor($json.days_pending) }} days)",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px\"><h2 style=\"color:#d93025\">⚠️ Refund Needs Immediate Action</h2><table style=\"border-collapse:collapse;width:100%\"><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Refund ID</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.refund_id }}</td></tr><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Booking</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.booking_reference }}</td></tr><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Passenger</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.passenger_name }} &lt;{{ $json.passenger_email }}&gt;</td></tr><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Amount</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.currency }} {{ $json.amount }}</td></tr><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Pending Days</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ Math.floor($json.days_pending) }} days</td></tr></table><p style=\"color:#d93025\">Process immediately via admin dashboard.</p></body></html>",
+        "options": {}
+      },
+      "id": "re-003", "name": "Send Refund Alert",
+      "type": "n8n-nodes-base.gmail", "typeVersion": 2.1, "position": [0, 640],
+      "credentials": { "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail account" } }
+    },
     {
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE refunds SET escalation_sent_at = NOW() WHERE id = '{{ $json.refund_id }}'::uuid;",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000052",
-      "name": "Mark Refund Escalated",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [600, 1420],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
+      "id": "re-004", "name": "Mark Refund Escalated",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [260, 640],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
     },
 
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * *" }] } },
+      "id": "dr-001", "name": "Daily Report Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [-500, 820]
+    },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH candidate AS (\n  SELECT w.id\n  FROM waitlist_entries w\n  JOIN seat_inventory s ON s.flight_id = w.flight_id AND s.seat_class = w.seat_class\n  JOIN flights f ON f.id = w.flight_id\n  WHERE w.status = 'WAITING'\n    AND f.status <> 'CANCELLED'\n    AND f.departure_at > NOW()\n    AND s.available_seats >= 1\n  ORDER BY w.priority_score ASC, w.created_at ASC\n  FOR UPDATE SKIP LOCKED\n  LIMIT 1\n)\nUPDATE waitlist_entries w\nSET\n  status = 'PROMOTED',\n  promoted_at = NOW(),\n  claim_expires_at = NOW() + INTERVAL '2 hours'\nFROM candidate c\nWHERE w.id = c.id\nRETURNING\n  w.id AS waitlist_id,\n  w.user_id,\n  w.flight_id,\n  w.passenger_name,\n  w.email,\n  w.seat_class,\n  w.fare_type,\n  w.claim_expires_at;",
+        "query": "SELECT f.flight_number, f.origin, f.destination, f.status, f.departure_at::date AS dep_date, COALESCE(SUM(si.total_seats),0) AS total_seats, COALESCE(SUM(si.total_seats - si.available_seats - si.held_seats),0) AS booked, COALESCE(SUM(si.held_seats),0) AS held, COALESCE(SUM(b.total_amount),0) AS revenue FROM flights f LEFT JOIN seat_inventory si ON si.flight_id = f.id LEFT JOIN bookings b ON b.flight_id = f.id AND b.status = 'CONFIRMED' WHERE f.status <> 'CANCELLED' AND f.departure_at >= NOW() AND f.departure_at < NOW() + INTERVAL '7 days' GROUP BY f.id, f.flight_number, f.origin, f.destination, f.status, f.departure_at ORDER BY f.departure_at;",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000060",
-      "name": "Promote Top Waitlist Passenger",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [80, 1620],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
+      "id": "dr-002", "name": "Get Daily Flight Stats",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [-260, 820],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
     },
-
     {
       "parameters": {
-        "jsCode": "// Stop flow if promotion query returned no rows (nobody was waiting)\nconst rows = $input.all();\nif (!rows || rows.length === 0) return [];\nconst first = rows[0].json;\nif (!first.waitlist_id || first.waitlist_id === 'undefined' || first.waitlist_id === null) return [];\nreturn rows;",
+        "jsCode": "const rows = items.map(i => { const x = i.json; const load = x.total_seats ? ((x.booked / x.total_seats) * 100).toFixed(1) : 0; return `${x.flight_number} | ${x.origin}→${x.destination} | ${x.dep_date} | Booked:${x.booked}/${x.total_seats}(${load}%) | Held:${x.held} | $${Number(x.revenue).toFixed(2)}`; });\nconst today = new Date().toISOString().split('T')[0];\nreturn [{ json: { report: `📊 SkyFlow Daily Ops Report — ${today}\\n${'─'.repeat(70)}\\n${rows.join('\\n')}\\n${'─'.repeat(70)}\\nTotal: ${rows.length} flights` } }];",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000060b",
-      "name": "Check If Promoted",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [210, 1620]
+      "id": "dr-003", "name": "Format Daily Report",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [0, 820]
     },
-
-
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT\n  w.passenger_name AS full_name,\n  w.email,\n  f.flight_number,\n  f.origin,\n  f.destination,\n  f.departure_at,\n  w.seat_class,\n  w.fare_type,\n  w.promoted_at,\n  w.claim_expires_at\nFROM waitlist_entries w\nJOIN flights f ON f.id = w.flight_id\nWHERE w.id = '{{ $json.waitlist_id }}'::uuid;",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000061",
-      "name": "Get Promoted Passenger Details",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [340, 1620],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "=🎉 Seat Available — {{ $json.flight_number }} ({{ $json.seat_class }})",
-        "emailType": "html",
-        "message": "=<html><body style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n<h2 style=\"color: #1e8e3e;\">🎉 Great News — A Seat Is Available!</h2>\n<p>Dear {{ $json.full_name }},</p>\n<p>A <strong>{{ $json.seat_class }}</strong> class seat has become available on your waitlisted flight.</p>\n<table style=\"border-collapse: collapse; width: 100%; margin: 20px 0;\">\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Flight</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.flight_number }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Route</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.origin }} → {{ $json.destination }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Departure</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.departure_at }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Class</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.seat_class }} ({{ $json.fare_type }})</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd; background: #fff3cd;\"><strong>⏰ Claim By</strong></td><td style=\"padding: 8px; border: 1px solid #ddd; background: #fff3cd; font-weight: bold;\">{{ $json.claim_expires_at }}</td></tr>\n</table>\n<p style=\"color: #d93025;\"><strong>⚠️ Act quickly!</strong> If you do not book this seat within 2 hours, it will be offered to the next passenger on the waitlist.</p>\n<p style=\"color: #666; font-size: 12px;\">This offer was generated automatically by SkyFlow.</p>\n</body></html>",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000062",
-      "name": "Notify Promoted Passenger",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [600, 1620],
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "GMAIL_CREDENTIAL_ID",
-          "name": "Gmail account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT\n  b.id,\n  b.booking_reference,\n  b.user_id,\n  b.flight_id,\n  b.fare_type,\n  b.total_amount,\n  b.created_at,\n  COUNT(p.id) AS passenger_count,\n  u.email\nFROM bookings b\nJOIN passengers p ON p.booking_id = b.id AND p.status = 'CONFIRMED'\nJOIN users u ON u.id = b.user_id\nWHERE b.created_at >= NOW() - INTERVAL '24 hours'\n  AND b.status = 'CONFIRMED'\nGROUP BY b.id, b.booking_reference, b.user_id, b.flight_id, b.fare_type, b.total_amount, b.created_at, u.email;",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000070",
-      "name": "Get Recent Bookings",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [80, 1820],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "jsCode": "return items.map(i => {\n  const b = i.json;\n  const count = Number(b.passenger_count || 1);\n  const amount = Number(b.total_amount || 0);\n  const perSeat = count > 0 ? amount / count : amount;\n  \n  let risk_score = 0;\n  let risk_flags = [];\n  \n  // Flag: large group booking (>= 5 pax)\n  if (count >= 5) { risk_score += 40; risk_flags.push('LARGE_GROUP'); }\n  // Flag: very high spend\n  if (amount > 10000) { risk_score += 30; risk_flags.push('HIGH_SPEND'); }\n  // Flag: unusually high per-seat spend\n  if (perSeat > 3000) { risk_score += 20; risk_flags.push('HIGH_PER_SEAT'); }\n  // Flag: booking made at unusual hour (2-5 AM UTC)\n  const bookingHour = new Date(b.created_at).getUTCHours();\n  if (bookingHour >= 2 && bookingHour <= 5) { risk_score += 15; risk_flags.push('UNUSUAL_HOUR'); }\n  // Flag: no-name (anonymous) booking\n  if (!b.user_id) { risk_score += 25; risk_flags.push('ANONYMOUS_BOOKING'); }\n  \n  return { json: { ...b, risk_score, risk_flags: risk_flags.join(','), high_risk: risk_score >= 50 } };\n});",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000071",
-      "name": "Score Fraud Risk",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [340, 1820]
-    },
-
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO audit_logs (id, actor_role, action, entity_type, entity_id, new_data, reason, created_at)\nVALUES (\n  gen_random_uuid(),\n  'SYSTEM',\n  'FRAUD_SCAN_RESULT',\n  'booking',\n  '{{ $json.id }}'::uuid,\n  jsonb_build_object(\n    'booking_reference', '{{ $json.booking_reference }}',\n    'risk_score', {{ $json.risk_score }},\n    'risk_flags', '{{ $json.risk_flags }}',\n    'high_risk', {{ $json.high_risk }},\n    'passenger_count', {{ $json.passenger_count }},\n    'total_amount', '{{ $json.total_amount }}'\n  ),\n  'Scheduled recent booking fraud scan (last 24h)',\n  NOW()\n);",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000072",
-      "name": "Save Fraud Scores",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [600, 1820],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT\n  b.id,\n  b.booking_reference,\n  b.user_id,\n  b.flight_id,\n  b.fare_type,\n  b.total_amount,\n  b.created_at,\n  b.status,\n  b.cancellation_policy\nFROM bookings b\nWHERE b.created_at < NOW() - INTERVAL '24 hours'\nORDER BY b.created_at DESC\nLIMIT 100;",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000080",
-      "name": "Get Historical Batch",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [80, 2020],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO audit_logs (id, actor_role, action, entity_type, entity_id, new_data, reason, created_at)\nVALUES (\n  gen_random_uuid(),\n  'SYSTEM',\n  'HISTORICAL_FRAUD_REVIEW',\n  'booking',\n  '{{ $json.id }}'::uuid,\n  jsonb_build_object(\n    'booking_reference', '{{ $json.booking_reference }}',\n    'status', '{{ $json.status }}',\n    'fare_type', '{{ $json.fare_type }}',\n    'cancellation_policy', '{{ $json.cancellation_policy }}',\n    'total_amount', '{{ $json.total_amount }}'\n  ),\n  'Weekly historical booking fraud review batch',\n  NOW()\n);",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000081",
-      "name": "Save Historical Review",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [340, 2020],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH booking_fares AS (\n  SELECT\n    b.id AS booking_id,\n    b.booking_reference,\n    b.user_id,\n    b.flight_id,\n    b.seat_class,\n    b.fare_type,\n    b.total_amount,\n    b.currency,\n    COUNT(p.id) AS passenger_count,\n    b.total_amount / NULLIF(COUNT(p.id), 0) AS paid_per_seat\n  FROM bookings b\n  JOIN passengers p ON p.booking_id = b.id AND p.status = 'CONFIRMED'\n  WHERE b.status = 'CONFIRMED'\n  GROUP BY b.id, b.booking_reference, b.user_id, b.flight_id, b.seat_class, b.fare_type, b.total_amount, b.currency\n)\nSELECT\n  bf.booking_id,\n  bf.booking_reference,\n  u.email,\n  u.full_name,\n  f.flight_number,\n  f.origin,\n  f.destination,\n  f.departure_at,\n  bf.seat_class,\n  bf.fare_type,\n  bf.paid_per_seat,\n  CASE WHEN bf.fare_type = 'BASIC' THEN si.fare_basic ELSE si.fare_flexible END AS current_fare,\n  bf.currency,\n  ROUND(CAST((bf.paid_per_seat - CASE WHEN bf.fare_type = 'BASIC' THEN si.fare_basic ELSE si.fare_flexible END) AS numeric), 2) AS savings_per_seat,\n  ROUND(CAST(((bf.paid_per_seat - CASE WHEN bf.fare_type = 'BASIC' THEN si.fare_basic ELSE si.fare_flexible END) / NULLIF(bf.paid_per_seat, 0) * 100) AS numeric), 1) AS drop_pct\nFROM booking_fares bf\nJOIN users u ON u.id = bf.user_id\nJOIN flights f ON f.id = bf.flight_id\nJOIN seat_inventory si ON si.flight_id = bf.flight_id AND si.seat_class = bf.seat_class\nLEFT JOIN notification_logs n\n  ON n.booking_id = bf.booking_id\n  AND n.notification_type = 'PRICE_DROP'\n  AND n.created_at > NOW() - INTERVAL '7 days'\nWHERE f.status = 'SCHEDULED'\n  AND f.departure_at > NOW() + INTERVAL '1 day'\n  AND n.id IS NULL\n  AND CASE WHEN bf.fare_type = 'BASIC' THEN si.fare_basic ELSE si.fare_flexible END < bf.paid_per_seat * 0.90\nORDER BY drop_pct DESC;",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000090",
-      "name": "Find Price Drop Candidates",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [80, 2220],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "jsCode": "// Filter out minor fluctuations: only alert if drop > 10% AND > $20 absolute\nreturn items.filter(i => {\n  const pct = Number(i.json.drop_pct || 0);\n  const abs = Number(i.json.savings_per_seat || 0);\n  return pct >= 10 && abs >= 20;\n});",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000091",
-      "name": "Filter Significant Drops",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [340, 2220]
-    },
-
-    {
-      "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "=💰 Price Drop Alert — {{ $json.flight_number }} ({{ $json.drop_pct }}% cheaper!)",
-        "emailType": "html",
-        "message": "=<html><body style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n<h2 style=\"color: #1e8e3e;\">💰 Price Drop Alert!</h2>\n<p>Dear {{ $json.full_name }},</p>\n<p>Great news! The fare for your upcoming flight has dropped <strong>{{ $json.drop_pct }}%</strong> since you booked.</p>\n<table style=\"border-collapse: collapse; width: 100%; margin: 20px 0;\">\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Flight</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.flight_number }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Route</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.origin }} → {{ $json.destination }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Departure</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.departure_at }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Class</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.seat_class }} ({{ $json.fare_type }})</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>You Paid</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.currency }} {{ $json.paid_per_seat }} per seat</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd; background: #e8f5e9;\"><strong>Current Price</strong></td><td style=\"padding: 8px; border: 1px solid #ddd; background: #e8f5e9; color: #1e8e3e; font-weight: bold;\">{{ $json.currency }} {{ $json.current_fare }} per seat</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Potential Savings</strong></td><td style=\"padding: 8px; border: 1px solid #ddd; font-weight: bold; color: #1e8e3e;\">{{ $json.currency }} {{ $json.savings_per_seat }} per seat ({{ $json.drop_pct }}% off)</td></tr>\n</table>\n<p>If you have a <strong>Flexible</strong> fare, you may be eligible to rebook at the lower price. Contact our support team to check your options.</p>\n<p style=\"color: #666; font-size: 12px;\">Booking Reference: {{ $json.booking_reference }} | This alert is sent at most once every 7 days per booking.</p>\n</body></html>",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000092",
-      "name": "Send Price Drop Alert",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [600, 2220],
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "GMAIL_CREDENTIAL_ID",
-          "name": "Gmail account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO notification_logs (id, booking_id, notification_type, recipient_email, created_at)\nVALUES (gen_random_uuid(), '{{ $json.booking_id }}'::uuid, 'PRICE_DROP', '{{ $json.email }}', NOW())\nON CONFLICT DO NOTHING;",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000093",
-      "name": "Log Price Drop Sent",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [860, 2220],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "pollTimes": {
-          "item": [{ "mode": "everyMinute" }]
-        },
-        "filters": {
-          "labelIds": ["INBOX"]
-        },
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000100",
-      "name": "Gmail Support Inbox Trigger",
-      "type": "n8n-nodes-base.gmailTrigger",
-      "typeVersion": 1.2,
-      "position": [1200, 2800],
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "GMAIL_CREDENTIAL_ID",
-          "name": "Gmail account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "jsCode": "const item = $input.first();\nconst raw = item.json;\nconst text = raw.textPlain || raw.snippet || raw.textHtml || '';\n// Extract booking reference (pattern: BK followed by 8 alphanumeric chars)\nconst refMatch = text.match(/\\b(BK[A-Z0-9]{8})\\b/i);\nconst booking_reference = refMatch ? refMatch[1].toUpperCase() : '';\n// Extract sender email\nconst fromRaw = raw.from || '';\nconst emailMatch = fromRaw.match(/[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}/);\nconst sender_email = emailMatch ? emailMatch[0] : fromRaw;\nreturn [{ json: { booking_reference, question: text, sender_email, message_id: raw.id || '' } }];",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000101",
-      "name": "Parse Email and Booking Ref",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1440, 2800]
-    },
-
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT\n  b.id AS booking_id,\n  b.booking_reference,\n  b.fare_type,\n  b.cancellation_policy,\n  b.flight_cancellation_outcome AS cancellation_outcome,\n  b.status,\n  u.full_name,\n  u.email,\n  f.flight_number,\n  f.origin,\n  f.destination\nFROM bookings b\nJOIN users u ON u.id = b.user_id\nJOIN flights f ON f.id = b.flight_id\nWHERE b.booking_reference = '{{ $json.booking_reference }}'\nLIMIT 1;",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000102",
-      "name": "Fetch Booking Fare Rule",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [1680, 2800],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "rag-query-field",
-              "name": "query",
-              "value": "=Booking {{ $json.booking_reference }} | Fare type: {{ $json.fare_type }} | Cancellation policy: {{ $json.cancellation_policy }} | Status: {{ $json.status }} | Cancellation outcome: {{ $json.cancellation_outcome || 'N/A' }}. Passenger question: {{ $('Parse Email and Booking Ref').first().json.question }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000103",
-      "name": "Build RAG Query",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [1920, 2800]
-    },
-
-    {
-      "parameters": {
-        "mode": "retrieve-as-text",
-        "pineconeIndex": {
-          "__rl": true,
-          "value": "hackathon",
-          "mode": "list",
-          "cachedResultName": "hackathon"
-        },
-        "prompt": "={{ $json.query }}",
-        "topK": 5,
-        "options": {
-          "pineconeNamespace": "airline-policies"
-        }
-      },
-      "id": "00000000-0000-0000-0000-000000000104",
-      "name": "Search Policy Vectors",
-      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
-      "typeVersion": 1.1,
-      "position": [2160, 2800],
-      "credentials": {
-        "pineconeApi": {
-          "id": "PINECONE_CREDENTIAL_ID",
-          "name": "Pinecone account"
-        }
-      }
-    },
-
-    {
-      "parameters": {},
-      "id": "00000000-0000-0000-0000-000000000104b",
-      "name": "Gemini Embeddings Retrieval",
-      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
-      "typeVersion": 1,
-      "position": [2160, 2960],
-      "credentials": {
-        "googlePalmApi": {
-          "id": "GEMINI_CREDENTIAL_ID",
-          "name": "Google Gemini(PaLM) Api account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "=Passenger: {{ $('Fetch Booking Fare Rule').first().json.full_name }}\nBooking reference: {{ $('Fetch Booking Fare Rule').first().json.booking_reference }}\nFlight: {{ $('Fetch Booking Fare Rule').first().json.flight_number }} ({{ $('Fetch Booking Fare Rule').first().json.origin }} → {{ $('Fetch Booking Fare Rule').first().json.destination }})\nFare type: {{ $('Fetch Booking Fare Rule').first().json.fare_type }}\nCancellation policy: {{ $('Fetch Booking Fare Rule').first().json.cancellation_policy }}\nBooking status: {{ $('Fetch Booking Fare Rule').first().json.status }}\nCancellation outcome: {{ $('Fetch Booking Fare Rule').first().json.cancellation_outcome || 'N/A' }}\n\nPassenger question:\n{{ $('Parse Email and Booking Ref').first().json.question }}\n\nRetrieved airline policy context:\n{{ $json.output || $json.text || '' }}\n\nTask: Draft a clear, professional email reply to the passenger's question.\nRules:\n- Use ONLY the actual fare type and cancellation policy shown above\n- Use ONLY the retrieved airline policy context above\n- Do NOT invent policies or make promises not supported by the data\n- Do NOT promise cash refunds, rebooking, or travel credit unless the fare rule and retrieved policy explicitly allow it\n- Be empathetic but accurate\n- End every draft with the line: '--- DRAFT ONLY — Human approval required before sending to passenger ---'",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000105",
-      "name": "Draft Policy Answer",
-      "type": "@n8n/n8n-nodes-langchain.chainLlm",
-      "typeVersion": 1.5,
-      "position": [2400, 2800],
-      "executeOnce": true
-    },
-
-    {
-      "parameters": {
-        "model": "llama-3.3-70b-versatile",
-        "options": {
-          "temperature": 0.2,
-          "maxTokens": 1024
-        }
-      },
-      "id": "00000000-0000-0000-0000-000000000105b",
-      "name": "Groq LLM",
-      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
-      "typeVersion": 1,
-      "position": [2400, 2960],
-      "credentials": {
-        "groqApi": {
-          "id": "GROQ_CREDENTIAL_ID",
-          "name": "Groq account"
-        }
-      }
-    },
-
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO audit_logs (id, actor_role, action, entity_type, entity_id, new_data, reason, created_at)\nVALUES (\n  gen_random_uuid(),\n  'SYSTEM',\n  'RAG_POLICY_DRAFT_CREATED',\n  'booking',\n  '{{ $('Fetch Booking Fare Rule').first().json.booking_id }}'::uuid,\n  jsonb_build_object(\n    'booking_reference', '{{ $('Fetch Booking Fare Rule').first().json.booking_reference }}',\n    'passenger_email', '{{ $('Fetch Booking Fare Rule').first().json.email }}',\n    'sender_email', '{{ $('Parse Email and Booking Ref').first().json.sender_email }}',\n    'draft_preview', LEFT('{{ ($json.text || $json.output || '').replace(/'/g, \"''\") }}', 500)\n  ),\n  'PENDING_APPROVAL',\n  NOW()\n);",
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000106",
-      "name": "Save Pending RAG Draft",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [2640, 2800],
-      "credentials": {
-        "postgres": {
-          "id": "POSTGRES_CREDENTIAL_ID",
-          "name": "Postgres account"
-        }
-      }
-    },
-
     {
       "parameters": {
         "sendTo": "={{ $env.OPERATIONS_EMAIL }}",
-        "subject": "=🔍 Approval Required — RAG Support Draft for {{ $('Fetch Booking Fare Rule').first().json.booking_reference }}",
-        "emailType": "html",
-        "message": "=<html><body style=\"font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px;\">\n<h2 style=\"color: #1a73e8;\">🔍 RAG Policy Answer — Human Approval Required</h2>\n<p>A support email has been received and an AI-drafted reply is ready for your review.</p>\n<table style=\"border-collapse: collapse; width: 100%; margin: 15px 0;\">\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd; background: #f8f9fa;\"><strong>Passenger</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $('Fetch Booking Fare Rule').first().json.full_name }} &lt;{{ $('Fetch Booking Fare Rule').first().json.email }}&gt;</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd; background: #f8f9fa;\"><strong>Booking Reference</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $('Fetch Booking Fare Rule').first().json.booking_reference }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd; background: #f8f9fa;\"><strong>Fare Type</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $('Fetch Booking Fare Rule').first().json.fare_type }}</td></tr>\n  <tr><td style=\"padding: 8px; border: 1px solid #ddd; background: #f8f9fa;\"><strong>Cancellation Policy</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $('Fetch Booking Fare Rule').first().json.cancellation_policy }}</td></tr>\n</table>\n<h3>📧 Original Passenger Email:</h3>\n<div style=\"background: #f5f5f5; padding: 15px; border-left: 4px solid #1a73e8; margin: 10px 0;\">\n  <pre style=\"white-space: pre-wrap;\">{{ $('Parse Email and Booking Ref').first().json.question }}</pre>\n</div>\n<h3>🤖 AI Draft Reply (Groq + Pinecone RAG):</h3>\n<div style=\"background: #fff8e1; padding: 15px; border-left: 4px solid #fbbc04; margin: 10px 0;\">\n  <pre style=\"white-space: pre-wrap;\">{{ $('Draft Policy Answer').first().json.text || $('Draft Policy Answer').first().json.output }}</pre>\n</div>\n<hr/>\n<p style=\"color: #d93025; font-weight: bold;\">⚠️ DO NOT FORWARD THIS TO THE PASSENGER. Review the draft, edit if necessary, then send manually from your email client.</p>\n<p style=\"color: #666; font-size: 12px;\">This draft was generated by the SkyFlow RAG support pipeline. Saved as PENDING_APPROVAL in audit_logs.</p>\n</body></html>",
+        "subject": "=📊 SkyFlow Daily Ops Report — {{ new Date().toISOString().split('T')[0] }}",
+        "emailType": "text", "message": "={{ $json.report }}", "options": {}
+      },
+      "id": "dr-004", "name": "Send Daily Report",
+      "type": "n8n-nodes-base.gmail", "typeVersion": 2.1, "position": [260, 820],
+      "executeOnce": true,
+      "credentials": { "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail account" } }
+    },
+
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * 1" }] } },
+      "id": "wr-001", "name": "Weekly Report Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [-500, 1000]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT f.flight_number, f.origin, f.destination, COUNT(DISTINCT b.id) AS bookings_week, COALESCE(SUM(b.total_amount),0) AS revenue, COUNT(DISTINCT CASE WHEN b.status='CANCELLED' THEN b.id END) AS cancellations FROM flights f LEFT JOIN bookings b ON b.flight_id = f.id AND b.created_at >= NOW() - INTERVAL '7 days' WHERE f.departure_at >= NOW() - INTERVAL '7 days' GROUP BY f.id, f.flight_number, f.origin, f.destination ORDER BY revenue DESC;",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000107",
-      "name": "Request Human Approval",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [2880, 2800],
+      "id": "wr-002", "name": "Get Weekly Stats",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [-260, 1000],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = items.map(i => { const x = i.json; return `${x.flight_number} | ${x.origin}→${x.destination} | Bookings:${x.bookings_week} | Rev:$${Number(x.revenue).toFixed(2)} | Cancelled:${x.cancellations}`; });\nconst total = items.reduce((s,i) => s + Number(i.json.revenue||0), 0);\nreturn [{ json: { report: `📈 Weekly Report\\n${'═'.repeat(70)}\\n${rows.join('\\n')}\\n${'═'.repeat(70)}\\nTotal Revenue: $${total.toFixed(2)}` } }];",
+        "options": {}
+      },
+      "id": "wr-003", "name": "Format Weekly Report",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [0, 1000]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.OPERATIONS_EMAIL }}",
+        "subject": "=📈 SkyFlow Weekly Report — {{ new Date().toISOString().split('T')[0] }}",
+        "emailType": "text", "message": "={{ $json.report }}", "options": {}
+      },
+      "id": "wr-004", "name": "Send Weekly Report",
+      "type": "n8n-nodes-base.gmail", "typeVersion": 2.1, "position": [260, 1000],
       "executeOnce": true,
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "GMAIL_CREDENTIAL_ID",
-          "name": "Gmail account"
-        }
-      }
+      "credentials": { "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail account" } }
+    },
+
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }] } },
+      "id": "fs-001", "name": "Fraud Scan Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [-500, 1180]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT b.id, b.booking_reference, b.fare_type, b.total_amount, b.created_at, COUNT(p.id) AS passenger_count, u.email FROM bookings b JOIN passengers p ON p.booking_id = b.id AND p.status = 'CONFIRMED' JOIN users u ON u.id = b.user_id WHERE b.created_at >= NOW() - INTERVAL '24 hours' AND b.status = 'CONFIRMED' GROUP BY b.id, b.booking_reference, b.fare_type, b.total_amount, b.created_at, u.email;",
+        "options": {}
+      },
+      "id": "fs-002", "name": "Get Recent Bookings",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [-260, 1180],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(i => { const b = i.json; const amt = Number(b.total_amount||0); const cnt = Number(b.passenger_count||1); let score = 0; const flags = []; if (cnt >= 5) { score+=40; flags.push('LARGE_GROUP'); } if (amt > 10000) { score+=30; flags.push('HIGH_SPEND'); } if (amt/cnt > 3000) { score+=20; flags.push('HIGH_PER_SEAT'); } const h = new Date(b.created_at).getUTCHours(); if (h>=2 && h<=5) { score+=15; flags.push('UNUSUAL_HOUR'); } return { json: { ...b, risk_score: score, risk_flags: flags.join(','), high_risk: score >= 50 } }; });",
+        "options": {}
+      },
+      "id": "fs-003", "name": "Score Fraud Risk",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [0, 1180]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs (id, actor_role, action, entity_type, entity_id, new_data, reason, created_at) VALUES (gen_random_uuid(), 'SYSTEM', 'FRAUD_SCAN_RESULT', 'booking', '{{ $json.id }}'::uuid, jsonb_build_object('booking_reference','{{ $json.booking_reference }}','risk_score',{{ $json.risk_score }},'risk_flags','{{ $json.risk_flags }}','high_risk',{{ $json.high_risk }}), 'Daily fraud scan', NOW());",
+        "options": {}
+      },
+      "id": "fs-004", "name": "Save Fraud Results",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [260, 1180],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
+    },
+
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "30 */6 * * *" }] } },
+      "id": "pd-001", "name": "Price Drop Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [-500, 1360]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH booking_fares AS (SELECT b.id AS booking_id, b.booking_reference, b.user_id, b.flight_id, b.seat_class, b.fare_type, b.total_amount, b.currency, COUNT(p.id) AS passenger_count, b.total_amount / NULLIF(COUNT(p.id),0) AS paid_per_seat FROM bookings b JOIN passengers p ON p.booking_id = b.id AND p.status = 'CONFIRMED' WHERE b.status = 'CONFIRMED' GROUP BY b.id, b.booking_reference, b.user_id, b.flight_id, b.seat_class, b.fare_type, b.total_amount, b.currency)\nSELECT bf.booking_id, bf.booking_reference, u.email, u.full_name, f.flight_number, f.origin, f.destination, f.departure_at, bf.seat_class, bf.fare_type, bf.paid_per_seat, CASE WHEN bf.fare_type='BASIC' THEN si.fare_basic ELSE si.fare_flexible END AS current_fare, bf.currency, ROUND(CAST((bf.paid_per_seat - CASE WHEN bf.fare_type='BASIC' THEN si.fare_basic ELSE si.fare_flexible END) AS numeric),2) AS savings_per_seat, ROUND(CAST(((bf.paid_per_seat - CASE WHEN bf.fare_type='BASIC' THEN si.fare_basic ELSE si.fare_flexible END)/NULLIF(bf.paid_per_seat,0)*100) AS numeric),1) AS drop_pct FROM booking_fares bf JOIN users u ON u.id = bf.user_id JOIN flights f ON f.id = bf.flight_id JOIN seat_inventory si ON si.flight_id = bf.flight_id AND si.seat_class = bf.seat_class LEFT JOIN notification_logs n ON n.booking_id = bf.booking_id AND n.notification_type = 'PRICE_DROP' AND n.created_at > NOW() - INTERVAL '7 days' WHERE f.status='SCHEDULED' AND f.departure_at > NOW() + INTERVAL '1 day' AND n.id IS NULL AND CASE WHEN bf.fare_type='BASIC' THEN si.fare_basic ELSE si.fare_flexible END < bf.paid_per_seat * 0.90 ORDER BY drop_pct DESC;",
+        "options": {}
+      },
+      "id": "pd-002", "name": "Find Price Drops",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [-260, 1360],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.filter(i => Number(i.json.drop_pct||0) >= 10 && Number(i.json.savings_per_seat||0) >= 20);",
+        "options": {}
+      },
+      "id": "pd-003", "name": "Filter Significant Drops",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [0, 1360]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=💰 Price Drop — {{ $json.flight_number }} ({{ $json.drop_pct }}% cheaper!)",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px\"><h2 style=\"color:#1e8e3e\">💰 Price Drop Alert!</h2><p>Dear {{ $json.full_name }},</p><p>The fare for your flight dropped <strong>{{ $json.drop_pct }}%</strong> since you booked.</p><table style=\"border-collapse:collapse;width:100%;margin:15px 0\"><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Flight</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.flight_number }} | {{ $json.origin }}→{{ $json.destination }}</td></tr><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>You Paid</b></td><td style=\"padding:8px;border:1px solid #ddd\">{{ $json.currency }} {{ $json.paid_per_seat }} / seat</td></tr><tr style=\"background:#e8f5e9\"><td style=\"padding:8px;border:1px solid #ddd\"><b>Current Price</b></td><td style=\"padding:8px;border:1px solid #ddd;color:#1e8e3e;font-weight:bold\">{{ $json.currency }} {{ $json.current_fare }} / seat</td></tr><tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Savings</b></td><td style=\"padding:8px;border:1px solid #ddd;font-weight:bold;color:#1e8e3e\">{{ $json.currency }} {{ $json.savings_per_seat }} / seat</td></tr></table><p style=\"color:#666;font-size:12px\">Ref: {{ $json.booking_reference }}</p></body></html>",
+        "options": {}
+      },
+      "id": "pd-004", "name": "Send Price Drop Alert",
+      "type": "n8n-nodes-base.gmail", "typeVersion": 2.1, "position": [260, 1360],
+      "credentials": { "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail account" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO notification_logs (id, booking_id, notification_type, recipient_email, created_at) VALUES (gen_random_uuid(), '{{ $json.booking_id }}'::uuid, 'PRICE_DROP', '{{ $json.email }}', NOW()) ON CONFLICT DO NOTHING;",
+        "options": {}
+      },
+      "id": "pd-005", "name": "Log Price Drop Sent",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [520, 1360],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
+    },
+
+    {
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute" }] },
+        "filters": { "labelIds": ["INBOX"] }, "options": {}
+      },
+      "id": "rag-001", "name": "Gmail Support Trigger",
+      "type": "n8n-nodes-base.gmailTrigger", "typeVersion": 1.2, "position": [-500, 1540],
+      "credentials": { "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst text = raw.textPlain || raw.snippet || '';\nconst refMatch = text.match(/\\b(BK[A-Z0-9]{8})\\b/i);\nconst booking_reference = refMatch ? refMatch[1].toUpperCase() : '';\nconst fromRaw = raw.from || '';\nconst emailMatch = fromRaw.match(/[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}/);\nreturn [{ json: { booking_reference, question: text, sender_email: emailMatch ? emailMatch[0] : fromRaw } }];",
+        "options": {}
+      },
+      "id": "rag-002", "name": "Parse Support Email",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [-260, 1540]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT b.id AS booking_id, b.booking_reference, b.fare_type, b.cancellation_policy, b.flight_cancellation_outcome AS cancellation_outcome, b.status, u.full_name, u.email, f.flight_number, f.origin, f.destination FROM bookings b JOIN users u ON u.id = b.user_id JOIN flights f ON f.id = b.flight_id WHERE b.booking_reference = '{{ $json.booking_reference }}' LIMIT 1;",
+        "options": {}
+      },
+      "id": "rag-003", "name": "Fetch Booking Fare Rule",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [0, 1540],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "assignments": { "assignments": [{ "id": "q1", "name": "query", "value": "=Booking {{ $json.booking_reference }} | Fare: {{ $json.fare_type }} | Policy: {{ $json.cancellation_policy }} | Status: {{ $json.status }} | Passenger question: {{ $('Parse Support Email').first().json.question }}", "type": "string" }] },
+        "options": {}
+      },
+      "id": "rag-004", "name": "Build RAG Query",
+      "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [260, 1540]
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-text",
+        "pineconeIndex": { "__rl": true, "value": "hackathon", "mode": "list", "cachedResultName": "hackathon" },
+        "prompt": "={{ $json.query }}", "topK": 5,
+        "options": { "pineconeNamespace": "airline-policies" }
+      },
+      "id": "rag-005", "name": "Search Policy Vectors",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone", "typeVersion": 1.1, "position": [520, 1540],
+      "credentials": { "pineconeApi": { "id": "PINECONE_CREDENTIAL_ID", "name": "Pinecone account" } }
+    },
+    {
+      "parameters": {},
+      "id": "rag-005b", "name": "Gemini Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini", "typeVersion": 1, "position": [520, 1700],
+      "credentials": { "googlePalmApi": { "id": "GEMINI_CREDENTIAL_ID", "name": "Google Gemini(PaLM) Api account" } }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Passenger: {{ $('Fetch Booking Fare Rule').first().json.full_name }}\nBooking: {{ $('Fetch Booking Fare Rule').first().json.booking_reference }}\nFare type: {{ $('Fetch Booking Fare Rule').first().json.fare_type }}\nCancellation policy: {{ $('Fetch Booking Fare Rule').first().json.cancellation_policy }}\nStatus: {{ $('Fetch Booking Fare Rule').first().json.status }}\n\nPassenger question:\n{{ $('Parse Support Email').first().json.question }}\n\nRetrieved policy context:\n{{ $json.output || '' }}\n\nDraft a professional email reply using ONLY the actual fare rule and retrieved policy. Do NOT invent policies. End with: '--- DRAFT ONLY — Human approval required ---'",
+        "options": {}
+      },
+      "id": "rag-006", "name": "Draft Policy Answer",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm", "typeVersion": 1.5, "position": [780, 1540],
+      "executeOnce": true
+    },
+    {
+      "parameters": { "model": "llama-3.3-70b-versatile", "options": { "temperature": 0.2 } },
+      "id": "rag-006b", "name": "Groq LLM",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq", "typeVersion": 1, "position": [780, 1700],
+      "credentials": { "groqApi": { "id": "GROQ_CREDENTIAL_ID", "name": "Groq account" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs (id, actor_role, action, entity_type, entity_id, new_data, reason, created_at) VALUES (gen_random_uuid(), 'SYSTEM', 'RAG_POLICY_DRAFT_CREATED', 'booking', '{{ $('Fetch Booking Fare Rule').first().json.booking_id }}'::uuid, jsonb_build_object('booking_reference','{{ $('Fetch Booking Fare Rule').first().json.booking_reference }}','passenger_email','{{ $('Fetch Booking Fare Rule').first().json.email }}'), 'PENDING_APPROVAL', NOW());",
+        "options": {}
+      },
+      "id": "rag-007", "name": "Save Pending Draft",
+      "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [1040, 1540],
+      "credentials": { "postgres": { "id": "POSTGRES_CREDENTIAL_ID", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.OPERATIONS_EMAIL }}",
+        "subject": "=🔍 Approval Required — RAG Draft for {{ $('Fetch Booking Fare Rule').first().json.booking_reference }}",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:20px\"><h2 style=\"color:#1a73e8\">🔍 RAG Draft — Approval Required</h2><p><b>Passenger:</b> {{ $('Fetch Booking Fare Rule').first().json.full_name }} &lt;{{ $('Fetch Booking Fare Rule').first().json.email }}&gt;</p><p><b>Booking:</b> {{ $('Fetch Booking Fare Rule').first().json.booking_reference }} | <b>Fare:</b> {{ $('Fetch Booking Fare Rule').first().json.fare_type }}</p><h3>Original Email:</h3><div style=\"background:#f5f5f5;padding:15px;border-left:4px solid #1a73e8\"><pre style=\"white-space:pre-wrap\">{{ $('Parse Support Email').first().json.question }}</pre></div><h3>AI Draft Reply:</h3><div style=\"background:#fff8e1;padding:15px;border-left:4px solid #fbbc04\"><pre style=\"white-space:pre-wrap\">{{ $('Draft Policy Answer').first().json.text || $('Draft Policy Answer').first().json.output }}</pre></div><p style=\"color:#d93025\"><b>⚠️ DO NOT forward to passenger until reviewed and approved manually.</b></p></body></html>",
+        "options": {}
+      },
+      "id": "rag-008", "name": "Request Human Approval",
+      "type": "n8n-nodes-base.gmail", "typeVersion": 2.1, "position": [1300, 1540],
+      "executeOnce": true,
+      "credentials": { "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail account" } }
     },
 
     {
       "parameters": {},
-      "id": "00000000-0000-0000-0000-000000000200",
-      "name": "Manual Policy Ingestion Trigger",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [1200, 3400]
+      "id": "pol-001", "name": "Manual Policy Ingestion",
+      "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [-500, 1880]
     },
-
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "policy-text-field",
-              "name": "policy_text",
-              "value": "PASTE YOUR AIRLINE POLICY TEXT HERE BEFORE RUNNING.\n\nInclude: cancellation policy, refund rules, fare types (BASIC vs FLEXIBLE), baggage policy, check-in policy, waitlist rules, group booking policy, schedule change compensation policy.",
-              "type": "string"
-            },
-            {
-              "id": "policy-source-field",
-              "name": "policy_source",
-              "value": "SkyFlow Flight Management System — Official Policy Document",
-              "type": "string"
-            },
-            {
-              "id": "policy-version-field",
-              "name": "policy_version",
-              "value": "v1.0",
-              "type": "string"
-            }
-          ]
-        },
+        "assignments": { "assignments": [{ "id": "pt1", "name": "policy_text", "value": "PASTE POLICY TEXT HERE before running.", "type": "string" }] },
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000201",
-      "name": "Set Policy Content",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [1440, 3400]
+      "id": "pol-002", "name": "Set Policy Text",
+      "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [-260, 1880]
     },
-
     {
       "parameters": {
-        "jsCode": "const text = $json.policy_text || '';\nconst source = $json.policy_source || 'Unknown';\nconst version = $json.policy_version || 'v1';\nconst chunkSize = 900;\nconst overlap = 150;\nconst chunks = [];\nfor (let i = 0; i < text.length; i += chunkSize - overlap) {\n  const chunk = text.slice(i, i + chunkSize);\n  if (chunk.trim().length > 50) {\n    chunks.push({\n      json: {\n        pageContent: chunk,\n        metadata: {\n          source,\n          version,\n          chunk_index: chunks.length,\n          char_start: i\n        }\n      }\n    });\n  }\n}\nconsole.log(`Chunked policy into ${chunks.length} segments`);\nreturn chunks;",
+        "jsCode": "const text = $json.policy_text || ''; const size = 900, overlap = 150; const chunks = []; for (let i = 0; i < text.length; i += size - overlap) { const chunk = text.slice(i, i + size); if (chunk.trim().length > 50) chunks.push({ json: { pageContent: chunk, metadata: { source: 'skyflow-policy', chunk: chunks.length } } }); } return chunks;",
         "options": {}
       },
-      "id": "00000000-0000-0000-0000-000000000202",
-      "name": "Chunk Policy Text",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1680, 3400]
+      "id": "pol-003", "name": "Chunk Policy Text",
+      "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [0, 1880]
     },
-
     {
       "parameters": {
         "mode": "insert",
-        "pineconeIndex": {
-          "__rl": true,
-          "value": "hackathon",
-          "mode": "list",
-          "cachedResultName": "hackathon"
-        },
-        "options": {
-          "pineconeNamespace": "airline-policies"
-        }
+        "pineconeIndex": { "__rl": true, "value": "hackathon", "mode": "list", "cachedResultName": "hackathon" },
+        "options": { "pineconeNamespace": "airline-policies" }
       },
-      "id": "00000000-0000-0000-0000-000000000203",
-      "name": "Insert Policy to Pinecone",
-      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
-      "typeVersion": 1.1,
-      "position": [1920, 3400],
-      "credentials": {
-        "pineconeApi": {
-          "id": "PINECONE_CREDENTIAL_ID",
-          "name": "Pinecone account"
-        }
-      }
+      "id": "pol-004", "name": "Insert to Pinecone",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone", "typeVersion": 1.1, "position": [260, 1880],
+      "credentials": { "pineconeApi": { "id": "PINECONE_CREDENTIAL_ID", "name": "Pinecone account" } }
     },
-
     {
       "parameters": {},
-      "id": "00000000-0000-0000-0000-000000000203b",
-      "name": "Gemini Embeddings Ingestion",
-      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
-      "typeVersion": 1,
-      "position": [1920, 3560],
-      "credentials": {
-        "googlePalmApi": {
-          "id": "GEMINI_CREDENTIAL_ID",
-          "name": "Google Gemini(PaLM) Api account"
-        }
-      }
+      "id": "pol-004b", "name": "Gemini Embeddings Ingestion",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini", "typeVersion": 1, "position": [260, 2040],
+      "credentials": { "googlePalmApi": { "id": "GEMINI_CREDENTIAL_ID", "name": "Google Gemini(PaLM) Api account" } }
     },
-
     {
-      "parameters": {
-        "options": {}
-      },
-      "id": "00000000-0000-0000-0000-000000000203c",
-      "name": "Policy Document Loader",
-      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
-      "typeVersion": 1.1,
-      "position": [1920, 3720]
+      "parameters": { "options": {} },
+      "id": "pol-004c", "name": "Policy Document Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader", "typeVersion": 1.1, "position": [260, 2200]
     }
   ],
 
   "connections": {
-    "Keep-Alive Trigger": {
-      "main": [[{ "node": "Supabase Keep-Alive Ping", "type": "main", "index": 0 }]]
-    },
-    "Main Schedule Trigger": {
-      "main": [[{ "node": "Determine Job Type", "type": "main", "index": 0 }]]
-    },
-    "Determine Job Type": {
-      "main": [[{ "node": "Route to Job Handler", "type": "main", "index": 0 }]]
-    },
-    "Route to Job Handler": {
-      "main": [
-        [{ "node": "Find Upcoming Check-ins", "type": "main", "index": 0 }],
-        [{ "node": "Get Daily Flight Stats", "type": "main", "index": 0 }],
-        [{ "node": "Get Weekly Flight Stats", "type": "main", "index": 0 }],
-        [{ "node": "Find Stale Refunds", "type": "main", "index": 0 }],
-        [{ "node": "Promote Top Waitlist Passenger", "type": "main", "index": 0 }],
-        [{ "node": "Get Recent Bookings", "type": "main", "index": 0 }],
-        [{ "node": "Get Historical Batch", "type": "main", "index": 0 }],
-        [{ "node": "Find Price Drop Candidates", "type": "main", "index": 0 }]
-      ]
-    },
-    "Find Upcoming Check-ins": {
-      "main": [[{ "node": "Send Check-in Reminder", "type": "main", "index": 0 }]]
-    },
-    "Send Check-in Reminder": {
-      "main": [[{ "node": "Log Check-in Sent", "type": "main", "index": 0 }]]
-    },
-    "Get Daily Flight Stats": {
-      "main": [[{ "node": "Format Daily Report", "type": "main", "index": 0 }]]
-    },
-    "Format Daily Report": {
-      "main": [[{ "node": "Send Daily Ops Report", "type": "main", "index": 0 }]]
-    },
-    "Get Weekly Flight Stats": {
-      "main": [[{ "node": "Format Weekly Report", "type": "main", "index": 0 }]]
-    },
-    "Format Weekly Report": {
-      "main": [[{ "node": "Send Weekly Ops Report", "type": "main", "index": 0 }]]
-    },
-    "Find Stale Refunds": {
-      "main": [[{ "node": "Escalate Refund Alert", "type": "main", "index": 0 }]]
-    },
-    "Escalate Refund Alert": {
-      "main": [[{ "node": "Mark Refund Escalated", "type": "main", "index": 0 }]]
-    },
-    "Promote Top Waitlist Passenger": {
-      "main": [[{ "node": "Check If Promoted", "type": "main", "index": 0 }]]
-    },
-    "Check If Promoted": {
-      "main": [[{ "node": "Get Promoted Passenger Details", "type": "main", "index": 0 }]]
-    },
-    "Get Promoted Passenger Details": {
-      "main": [[{ "node": "Notify Promoted Passenger", "type": "main", "index": 0 }]]
-    },
-    "Get Recent Bookings": {
-      "main": [[{ "node": "Score Fraud Risk", "type": "main", "index": 0 }]]
-    },
-    "Score Fraud Risk": {
-      "main": [[{ "node": "Save Fraud Scores", "type": "main", "index": 0 }]]
-    },
-    "Get Historical Batch": {
-      "main": [[{ "node": "Save Historical Review", "type": "main", "index": 0 }]]
-    },
-    "Find Price Drop Candidates": {
-      "main": [[{ "node": "Filter Significant Drops", "type": "main", "index": 0 }]]
-    },
-    "Filter Significant Drops": {
-      "main": [[{ "node": "Send Price Drop Alert", "type": "main", "index": 0 }]]
-    },
-    "Send Price Drop Alert": {
-      "main": [[{ "node": "Log Price Drop Sent", "type": "main", "index": 0 }]]
-    },
-    "Gmail Support Inbox Trigger": {
-      "main": [[{ "node": "Parse Email and Booking Ref", "type": "main", "index": 0 }]]
-    },
-    "Parse Email and Booking Ref": {
-      "main": [[{ "node": "Fetch Booking Fare Rule", "type": "main", "index": 0 }]]
-    },
-    "Fetch Booking Fare Rule": {
-      "main": [[{ "node": "Build RAG Query", "type": "main", "index": 0 }]]
-    },
-    "Build RAG Query": {
-      "main": [[{ "node": "Search Policy Vectors", "type": "main", "index": 0 }]]
-    },
-    "Search Policy Vectors": {
-      "main": [[{ "node": "Draft Policy Answer", "type": "main", "index": 0 }]]
-    },
-    "Gemini Embeddings Retrieval": {
-      "ai_embedding": [[{ "node": "Search Policy Vectors", "type": "ai_embedding", "index": 0 }]]
-    },
-    "Draft Policy Answer": {
-      "main": [[{ "node": "Save Pending RAG Draft", "type": "main", "index": 0 }]]
-    },
-    "Groq LLM": {
-      "ai_languageModel": [[{ "node": "Draft Policy Answer", "type": "ai_languageModel", "index": 0 }]]
-    },
-    "Save Pending RAG Draft": {
-      "main": [[{ "node": "Request Human Approval", "type": "main", "index": 0 }]]
-    },
-    "Manual Policy Ingestion Trigger": {
-      "main": [[{ "node": "Set Policy Content", "type": "main", "index": 0 }]]
-    },
-    "Set Policy Content": {
-      "main": [[{ "node": "Chunk Policy Text", "type": "main", "index": 0 }]]
-    },
-    "Chunk Policy Text": {
-      "main": [[{ "node": "Insert Policy to Pinecone", "type": "main", "index": 0 }]]
-    },
-    "Gemini Embeddings Ingestion": {
-      "ai_embedding": [[{ "node": "Insert Policy to Pinecone", "type": "ai_embedding", "index": 0 }]]
-    },
-    "Policy Document Loader": {
-      "ai_document": [[{ "node": "Insert Policy to Pinecone", "type": "ai_document", "index": 0 }]]
-    }
+    "Keep-Alive Trigger": { "main": [[{ "node": "Keep-Alive DB Ping", "type": "main", "index": 0 }]] },
+    "Check-in Schedule": { "main": [[{ "node": "Find Upcoming Check-ins", "type": "main", "index": 0 }]] },
+    "Find Upcoming Check-ins": { "main": [[{ "node": "Send Check-in Email", "type": "main", "index": 0 }]] },
+    "Send Check-in Email": { "main": [[{ "node": "Log Check-in Sent", "type": "main", "index": 0 }]] },
+    "Waitlist Schedule": { "main": [[{ "node": "Promote Waitlist Passenger", "type": "main", "index": 0 }]] },
+    "Promote Waitlist Passenger": { "main": [[{ "node": "Skip If No Waitlist", "type": "main", "index": 0 }]] },
+    "Skip If No Waitlist": { "main": [[{ "node": "Get Waitlist Passenger Details", "type": "main", "index": 0 }]] },
+    "Get Waitlist Passenger Details": { "main": [[{ "node": "Send Waitlist Offer", "type": "main", "index": 0 }]] },
+    "Refund Escalation Schedule": { "main": [[{ "node": "Find Stale Refunds", "type": "main", "index": 0 }]] },
+    "Find Stale Refunds": { "main": [[{ "node": "Send Refund Alert", "type": "main", "index": 0 }]] },
+    "Send Refund Alert": { "main": [[{ "node": "Mark Refund Escalated", "type": "main", "index": 0 }]] },
+    "Daily Report Schedule": { "main": [[{ "node": "Get Daily Flight Stats", "type": "main", "index": 0 }]] },
+    "Get Daily Flight Stats": { "main": [[{ "node": "Format Daily Report", "type": "main", "index": 0 }]] },
+    "Format Daily Report": { "main": [[{ "node": "Send Daily Report", "type": "main", "index": 0 }]] },
+    "Weekly Report Schedule": { "main": [[{ "node": "Get Weekly Stats", "type": "main", "index": 0 }]] },
+    "Get Weekly Stats": { "main": [[{ "node": "Format Weekly Report", "type": "main", "index": 0 }]] },
+    "Format Weekly Report": { "main": [[{ "node": "Send Weekly Report", "type": "main", "index": 0 }]] },
+    "Fraud Scan Schedule": { "main": [[{ "node": "Get Recent Bookings", "type": "main", "index": 0 }]] },
+    "Get Recent Bookings": { "main": [[{ "node": "Score Fraud Risk", "type": "main", "index": 0 }]] },
+    "Score Fraud Risk": { "main": [[{ "node": "Save Fraud Results", "type": "main", "index": 0 }]] },
+    "Price Drop Schedule": { "main": [[{ "node": "Find Price Drops", "type": "main", "index": 0 }]] },
+    "Find Price Drops": { "main": [[{ "node": "Filter Significant Drops", "type": "main", "index": 0 }]] },
+    "Filter Significant Drops": { "main": [[{ "node": "Send Price Drop Alert", "type": "main", "index": 0 }]] },
+    "Send Price Drop Alert": { "main": [[{ "node": "Log Price Drop Sent", "type": "main", "index": 0 }]] },
+    "Gmail Support Trigger": { "main": [[{ "node": "Parse Support Email", "type": "main", "index": 0 }]] },
+    "Parse Support Email": { "main": [[{ "node": "Fetch Booking Fare Rule", "type": "main", "index": 0 }]] },
+    "Fetch Booking Fare Rule": { "main": [[{ "node": "Build RAG Query", "type": "main", "index": 0 }]] },
+    "Build RAG Query": { "main": [[{ "node": "Search Policy Vectors", "type": "main", "index": 0 }]] },
+    "Search Policy Vectors": { "main": [[{ "node": "Draft Policy Answer", "type": "main", "index": 0 }]] },
+    "Gemini Embeddings": { "ai_embedding": [[{ "node": "Search Policy Vectors", "type": "ai_embedding", "index": 0 }]] },
+    "Groq LLM": { "ai_languageModel": [[{ "node": "Draft Policy Answer", "type": "ai_languageModel", "index": 0 }]] },
+    "Draft Policy Answer": { "main": [[{ "node": "Save Pending Draft", "type": "main", "index": 0 }]] },
+    "Save Pending Draft": { "main": [[{ "node": "Request Human Approval", "type": "main", "index": 0 }]] },
+    "Manual Policy Ingestion": { "main": [[{ "node": "Set Policy Text", "type": "main", "index": 0 }]] },
+    "Set Policy Text": { "main": [[{ "node": "Chunk Policy Text", "type": "main", "index": 0 }]] },
+    "Chunk Policy Text": { "main": [[{ "node": "Insert to Pinecone", "type": "main", "index": 0 }]] },
+    "Gemini Embeddings Ingestion": { "ai_embedding": [[{ "node": "Insert to Pinecone", "type": "ai_embedding", "index": 0 }]] },
+    "Policy Document Loader": { "ai_document": [[{ "node": "Insert to Pinecone", "type": "ai_document", "index": 0 }]] }
   },
 
   "active": false,
-  "settings": {
-    "executionOrder": "v1",
-    "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
-  },
-  "meta": {
-    "templateCredsSetupCompleted": false,
-    "instanceId": "skyflow-fms-production"
-  },
-  "pinData": {},
-  "tags": [
-    { "id": "tag-fms-1", "name": "flight-management" },
-    { "id": "tag-fms-2", "name": "production" },
-    { "id": "tag-fms-3", "name": "automation" }
-  ]
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "meta": { "templateCredsSetupCompleted": false },
+  "pinData": {}
 }
